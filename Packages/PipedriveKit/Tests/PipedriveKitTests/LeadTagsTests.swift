@@ -224,7 +224,7 @@ final class LeadTagsTests: XCTestCase {
         XCTAssertTrue(TagFilter.firstCall.matches(neverCalled))
         XCTAssertFalse(TagFilter.firstCall.matches(pending))
         XCTAssertTrue(TagFilter.all.matches(.none))
-        XCTAssertEqual(TagFilter.allCases.map(\.label), ["Toutes", "En signature", "Devis envoyé", "1er call à faire"])
+        XCTAssertEqual(TagFilter.allCases.map(\.label), ["Toutes", "En signature", "Devis envoyé", "Accès en attente", "1er call à faire"])
     }
 
     func testNewerQuoteAfterSignatureIsPending() async throws {

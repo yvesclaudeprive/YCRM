@@ -12,6 +12,8 @@ import Foundation
 ///     • TMA | 11/08/2026 | projet signé (yntranet)
 ///     ABANDONNÉS
 ///     • Audit SEO | 02/02/2026 | refusé par mail le 10/02/2026
+///     ACCÈS EN ATTENTE
+///     • FTP + back-office | 09/07/2026 | demandés par Mehdi, relancés le 05/11/2026
 ///     COMMENTAIRES
 ///     • 08/11/2026 : « la TMA est signée, la refonte non » → pris en compte
 ///     Analyse Claude du 08/11/2026 à 13:17
@@ -25,6 +27,9 @@ public struct QuoteAnalysis: Hashable, Sendable {
         case sent
         case signed
         case abandoned
+        /// Accès demandés au client (FTP, back-office, Google Ads, GA…) et pas encore reçus (demande d'Yves du
+        /// 08/11/2026) : ce n'est pas un devis, mais une étiquette « Accès » à part.
+        case access
 
         public var title: String {
             switch self {
@@ -32,6 +37,7 @@ public struct QuoteAnalysis: Hashable, Sendable {
             case .sent: return "Devis envoyés"
             case .signed: return "Signés"
             case .abandoned: return "Abandonnés"
+            case .access: return "Accès en attente"
             }
         }
     }
@@ -116,6 +122,7 @@ public struct QuoteAnalysis: Hashable, Sendable {
         "devis envoyes": .sent, "devis envoye": .sent, "devis en attente": .sent, "envoyes": .sent,
         "signes": .signed, "signe": .signed, "devis signes": .signed,
         "abandonnes": .abandoned, "abandonne": .abandoned, "perdus": .abandoned, "refuses": .abandoned,
+        "acces en attente": .access, "demandes d'acces": .access, "acces demandes": .access,
     ]
     static let commentHeaders: Set<String> = ["commentaires", "commentaire", "commentaires d'yves"]
     static let emptyMarkers: Set<String> = ["aucun", "aucune", "rien", "neant", "-"]

@@ -173,6 +173,16 @@ struct ActivityRow: View {
             .buttonStyle(PressableStyle())
             .accessibilityHint("Voir le détail des devis envoyés")
         }
+        let access = tags.accessLines(timeZone: parisTimeZone)
+        if !access.isEmpty {
+            Button {
+                perform(.showQuotes)
+            } label: {
+                linesCapsule(access, icon: "key.fill", color: .accessBlue)
+            }
+            .buttonStyle(PressableStyle())
+            .accessibilityHint("Voir les accès demandés au client")
+        }
         if tags.firstCallToDo {
             tagCapsule(AttributedString("1er call à faire"), icon: "phone.fill", color: .pink)
         }
@@ -681,6 +691,8 @@ extension Color {
     static let keywordOrange = Color(red: 0.93, green: 0.42, blue: 0.16)
     /// Étiquette « En signature » : orange vif, plus chaud que le violet « Devis envoyé ».
     static let signingOrange = Color(red: 0.96, green: 0.36, blue: 0.0)
+    /// Étiquette « Accès » (accès demandés au client, pas encore reçus).
+    static let accessBlue = Color(red: 0.05, green: 0.42, blue: 0.85)
 }
 
 /// Couleurs des 4 lignes (demande d'Yves du 07/11/2026) : actions en orange (appels, mails),

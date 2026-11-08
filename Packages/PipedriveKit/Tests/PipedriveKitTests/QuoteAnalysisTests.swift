@@ -49,6 +49,19 @@ final class QuoteAnalysisTests: XCTestCase {
         XCTAssertEqual(Set<TagFilter>().label, "Toutes")
     }
 
+    func testAccessPending() throws {
+        let text = "ACCÈS EN ATTENTE\n• FTP + back-office | 09/07/2026 | demandés par Mehdi, relancés le 05/11/2026\nAnalyse Claude du 08/11/2026 à 16:00"
+        let analysis = try XCTUnwrap(QuoteAnalysis(text: text))
+        XCTAssertEqual(analysis.entries(.access).map(\.title), ["FTP + back-office"])
+        let tags = LeadTags(analysis: analysis, firstCallToDo: false, now: Self.now, timeZone: paris)
+        XCTAssertTrue(tags.hasAccessPending)
+        XCTAssertFalse(tags.isEmpty)
+        XCTAssertFalse(tags.hasPendingQuote, "un accès n'est pas un devis")
+        XCTAssertEqual(tags.accessLines(now: Self.now, timeZone: paris).map(\.text), ["Accès - FTP + back-office - 122j"])
+        XCTAssertTrue(TagFilter.access.matches(tags))
+        XCTAssertFalse(TagFilter.quoteSent.matches(tags))
+    }
+
     func testFieldName() {
         XCTAssertTrue(ActivityFeedLoader.isQuoteAnalysisField("Devis en attente (claude)"))
         XCTAssertTrue(ActivityFeedLoader.isQuoteAnalysisField("Devis en attente"))

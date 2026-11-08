@@ -17,20 +17,24 @@ public struct LeadTags: Hashable, Sendable {
     public let signing: [QuoteSent]
     /// Analyse de Claude (champ d'affaire « Devis en attente ») : quand elle existe, elle fait foi.
     public let analysis: QuoteAnalysis?
+    /// Accès demandés au client et pas encore reçus, d'après l'analyse de Claude (étiquette « Accès »).
+    public let access: [QuoteSent]
 
     public init(quotes: [QuoteSent], firstCallToDo: Bool, signature: SignatureEvidence? = nil, signing: [QuoteSent] = [],
-                analysis: QuoteAnalysis? = nil) {
+                analysis: QuoteAnalysis? = nil, access: [QuoteSent] = []) {
         self.quotes = quotes
         self.firstCallToDo = firstCallToDo
         self.signature = signature
         self.signing = signing
         self.analysis = analysis
+        self.access = access
     }
 
     /// Étiquettes tirées de l'analyse de Claude : « En signature » et « Devis envoyé » devis par devis.
     public init(analysis: QuoteAnalysis, firstCallToDo: Bool, now: Date = Date(), timeZone: TimeZone) {
         self.init(quotes: analysis.quotes(.sent, now: now, timeZone: timeZone), firstCallToDo: firstCallToDo,
-                  signing: analysis.quotes(.signing, now: now, timeZone: timeZone), analysis: analysis)
+                  signing: analysis.quotes(.signing, now: now, timeZone: timeZone), analysis: analysis,
+                  access: analysis.quotes(.access, now: now, timeZone: timeZone))
     }
 
     /// Signé : une preuve de signature datée du dernier devis envoyé ou après (un devis plus récent repasse en « envoyé »).
@@ -63,7 +67,15 @@ public struct LeadTags: Hashable, Sendable {
     /// Devis en signature (DocuSign envoyé, pas encore signé) : étiquette « En signature », plus chaude.
     public var hasSigning: Bool { !signing.isEmpty }
 
-    public var isEmpty: Bool { !hasPendingQuote && !hasSigning && !firstCallToDo }
+    /// Accès demandés au client et pas encore reçus : étiquette bleue « Accès ».
+    public var hasAccessPending: Bool { !access.isEmpty }
+
+    public var isEmpty: Bool { !hasPendingQuote && !hasSigning && !hasAccessPending && !firstCallToDo }
+
+    /// Lignes de l'étiquette « Accès » : « Accès - FTP + back-office - 122j ».
+    public func accessLines(now: Date = Date(), timeZone: TimeZone) -> [TagLine] {
+        Self.lines(prefix: "Accès", access, now: now, timeZone: timeZone)
+    }
 
     /// Une ligne de l'étiquette (demandes d'Yves du 08/11/2026) : « Devis - SEO / GEO - 149j », le titre en gras dans
     /// l'app, une ligne par devis.
@@ -301,7 +313,7 @@ extension LeadTagRules {
 
 /// Filtre « Étiquettes » de la liste (demande d'Yves du 08/11/2026).
 public enum TagFilter: String, CaseIterable, Sendable, Identifiable {
-    case all, signing, quoteSent, firstCall
+    case all, signing, quoteSent, access, firstCall
 
     public var id: String { rawValue }
 
@@ -310,6 +322,7 @@ public enum TagFilter: String, CaseIterable, Sendable, Identifiable {
         case .all: return "Toutes"
         case .signing: return "En signature"
         case .quoteSent: return "Devis envoyé"
+        case .access: return "Accès en attente"
         case .firstCall: return "1er call à faire"
         }
     }
@@ -319,6 +332,7 @@ public enum TagFilter: String, CaseIterable, Sendable, Identifiable {
         case .all: return true
         case .signing: return tags.hasSigning
         case .quoteSent: return tags.hasPendingQuote
+        case .access: return tags.hasAccessPending
         case .firstCall: return tags.firstCallToDo
         }
     }
