@@ -567,7 +567,7 @@ struct ActivityListView: View {
             let api = try session.makeClient()
             let noteID = try await api.addNote(content: ClaudeNote.html(text), dealID: item.activity.dealID,
                                                personID: item.person?.id ?? item.activity.personID, orgID: item.orgID)
-            show(Toast(message: "✅ Note pour Claude enregistrée (\(item.clientName)) : prise en compte à la prochaine analyse, vers 5h ou 13h.") {
+            show(Toast(message: "✅ Note pour Claude enregistrée (\(item.clientName)) : Claude la lira à sa prochaine analyse (5h17 ou 13h17).") {
                 do {
                     try await session.makeClient().deleteNote(id: noteID)
                     show(Toast(message: "Note annulée."))
