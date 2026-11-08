@@ -117,10 +117,10 @@ struct ActivityListView: View {
         .sheet(isPresented: $showFilter) {
             FilterView(preset: feed.datePreset, customFrom: feed.customFrom, customTo: feed.customTo,
                        owners: feed.ownerIDs, users: feed.users, myID: session.userID,
-                       score: feed.scoreFilter, tag: feed.tagFilter) { preset, from, to, owners, score, tag in
+                       score: feed.scoreFilter, tags: feed.tagFilters) { preset, from, to, owners, score, tags in
                 Task {
                     await feed.applyFilters(preset: preset, from: from, to: to, owners: owners, score: score,
-                                            tag: tag, session: session)
+                                            tags: tags, session: session)
                 }
             }
         }
@@ -246,7 +246,7 @@ struct ActivityListView: View {
     /// Filtre « Étiquettes » : vérification de toute la liste en cours (les activités apparaissent au fur et à mesure).
     private func tagsProgressBanner(_ progress: TagsProgress) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("« \(feed.tagFilter.label) » : vérification de \(progress.done) / \(progress.total) activités…")
+            Text("« \(feed.tagFilters.label) » : vérification de \(progress.done) / \(progress.total) activités…")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
             ProgressView(value: Double(progress.done), total: Double(max(progress.total, 1)))
@@ -287,11 +287,11 @@ struct ActivityListView: View {
                 Button("Réessayer") { Task { await feed.reload(session: session) } }
             }
         } else if feed.filteredItems.isEmpty, feed.tagsProgress != nil {
-            ProgressView("Recherche des activités « \(feed.tagFilter.label) »…")
+            ProgressView("Recherche des activités « \(feed.tagFilters.label) »…")
         } else if feed.filteredItems.isEmpty {
-            if feed.tagFilter != .all && feed.search.isEmpty {
+            if !feed.tagFilters.isAll && feed.search.isEmpty {
                 ContentUnavailableView("Aucune activité", systemImage: "tag",
-                                       description: Text("Aucune activité avec l'étiquette « \(feed.tagFilter.label) »."))
+                                       description: Text("Aucune activité avec l'étiquette « \(feed.tagFilters.label) »."))
             } else if feed.search.isEmpty {
                 ContentUnavailableView("Aucune activité", systemImage: "checkmark.circle",
                                        description: Text("Rien à faire pour « \(feed.filter.label) ».") )

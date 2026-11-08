@@ -32,6 +32,23 @@ final class QuoteAnalysisTests: XCTestCase {
         XCTAssertEqual(analysis.footer, "Analyse Claude du 08/11/2026 à 13:17")
     }
 
+    func testMultipleTagFilters() throws {
+        let analysis = try XCTUnwrap(QuoteAnalysis(text: "EN SIGNATURE\n• TMA | 06/11/2026 | DocuSign envoyé"))
+        let signing = LeadTags(analysis: analysis, firstCallToDo: false, now: Self.now, timeZone: paris)
+        let neverCalled = LeadTags(quotes: [], firstCallToDo: true)
+        let nothing = LeadTags.none
+        let both: Set<TagFilter> = [.signing, .firstCall]
+        XCTAssertTrue(both.matches(signing))
+        XCTAssertTrue(both.matches(neverCalled))
+        XCTAssertFalse(both.matches(nothing))
+        XCTAssertFalse(Set<TagFilter>([.quoteSent]).matches(signing))
+        XCTAssertTrue(Set<TagFilter>().isAll)
+        XCTAssertTrue(Set<TagFilter>([.all, .signing]).isAll)
+        XCTAssertTrue(Set<TagFilter>().matches(nothing))
+        XCTAssertEqual(Set<TagFilter>([.firstCall, .signing]).label, "En signature ou 1er call à faire")
+        XCTAssertEqual(Set<TagFilter>().label, "Toutes")
+    }
+
     func testFieldName() {
         XCTAssertTrue(ActivityFeedLoader.isQuoteAnalysisField("Devis en attente (claude)"))
         XCTAssertTrue(ActivityFeedLoader.isQuoteAnalysisField("Devis en attente"))

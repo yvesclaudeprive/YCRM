@@ -292,6 +292,22 @@ public enum TagFilter: String, CaseIterable, Sendable, Identifiable {
     }
 }
 
+/// Filtre « Étiquettes » à choix multiple (demande d'Yves du 08/11/2026) : aucune étiquette choisie (ou « Toutes »)
+/// = toutes les activités ; sinon les activités qui ont AU MOINS UNE des étiquettes choisies.
+public extension Set where Element == TagFilter {
+    var isAll: Bool { isEmpty || contains(.all) }
+
+    func matches(_ tags: LeadTags) -> Bool {
+        isAll || contains { $0 != .all && $0.matches(tags) }
+    }
+
+    /// « Toutes », « En signature », « En signature ou Devis envoyé »… (dans l'ordre du filtre).
+    var label: String {
+        isAll ? TagFilter.all.label : TagFilter.allCases.filter { $0 != .all && contains($0) }.map(\.label)
+            .joined(separator: " ou ")
+    }
+}
+
 /// Calcule les étiquettes d'une fiche à partir de Pipedrive (1 à 6 requêtes, faites quand la carte apparaît).
 public struct LeadTagsLoader: Sendable {
     let client: PipedriveClient

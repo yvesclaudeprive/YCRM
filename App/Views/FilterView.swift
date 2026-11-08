@@ -10,8 +10,8 @@ struct FilterView: View {
     let users: [PipedriveUser]
     let myID: Int?
     let score: ScoreFilter
-    let tag: TagFilter
-    let onApply: (DatePreset, Date, Date, Set<Int>, ScoreFilter, TagFilter) -> Void
+    let tags: Set<TagFilter>
+    let onApply: (DatePreset, Date, Date, Set<Int>, ScoreFilter, Set<TagFilter>) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var selectedPreset: DatePreset = .defaultPreset
@@ -19,7 +19,7 @@ struct FilterView: View {
     @State private var to = Date()
     @State private var selectedOwners: Set<Int> = []
     @State private var selectedScore: ScoreFilter = .all
-    @State private var selectedTag: TagFilter = .all
+    @State private var selectedTags: Set<TagFilter> = []
 
     var body: some View {
         NavigationStack {
@@ -57,17 +57,27 @@ struct FilterView: View {
                 }
 
                 Section {
-                    Picker("Étiquettes", selection: $selectedTag) {
-                        ForEach(TagFilter.allCases) { option in
-                            Text(option.label).tag(option)
+                    // Plusieurs étiquettes possibles (demande d'Yves du 08/11/2026) ; « Toutes » efface le choix.
+                    ForEach(TagFilter.allCases) { option in
+                        Button {
+                            toggleTag(option)
+                        } label: {
+                            HStack {
+                                Text(option.label)
+                                    .foregroundStyle(Color.primary)
+                                Spacer()
+                                if option == .all ? selectedTags.isAll : selectedTags.contains(option) {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(Color.accentColor)
+                                        .fontWeight(.semibold)
+                                }
+                            }
                         }
                     }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
                 } header: {
                     Text("Étiquettes")
                 } footer: {
-                    Text("Seulement les activités avec cette étiquette (devis envoyé non signé, ou contact jamais eu au téléphone). Toute la liste est vérifiée dans Pipedrive : les activités apparaissent au fur et à mesure.")
+                    Text("Plusieurs choix possibles : les activités qui ont au moins une des étiquettes cochées. Toute la liste est vérifiée dans Pipedrive : les activités apparaissent au fur et à mesure.")
                 }
 
                 Section {
@@ -104,7 +114,7 @@ struct FilterView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Appliquer") {
-                        onApply(selectedPreset, from, to, selectedOwners, selectedScore, selectedTag)
+                        onApply(selectedPreset, from, to, selectedOwners, selectedScore, selectedTags)
                         dismiss()
                     }
                     .disabled(selectedOwners.isEmpty)
@@ -116,7 +126,7 @@ struct FilterView: View {
                 to = customTo
                 selectedOwners = owners.isEmpty ? Set([myID].compactMap { $0 }) : owners
                 selectedScore = score
-                selectedTag = tag
+                selectedTags = tags.isAll ? [] : tags
             }
         }
         .presentationBackground(.background)
@@ -130,6 +140,16 @@ struct FilterView: View {
                 if rhs.id == myID { return false }
                 return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
             }
+    }
+
+    private func toggleTag(_ option: TagFilter) {
+        if option == .all {
+            selectedTags = []
+        } else if selectedTags.contains(option) {
+            selectedTags.remove(option)
+        } else {
+            selectedTags.insert(option)
+        }
     }
 
     private func toggle(_ id: Int) {

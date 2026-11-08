@@ -36,7 +36,8 @@ final class ActivityFeedModel {
     private(set) var customTo = Date()
     private(set) var ownerIDs: Set<Int> = []
     private(set) var scoreFilter: ScoreFilter = .all
-    private(set) var tagFilter: TagFilter = .all
+    /// Étiquettes choisies (plusieurs possibles ; vide = toutes les activités).
+    private(set) var tagFilters: Set<TagFilter> = []
     private(set) var users: [PipedriveUser] = []
 
     var filter: ActivityDateFilter {
@@ -61,9 +62,10 @@ final class ActivityFeedModel {
     var filteredItems: [ActivityItem] {
         items.filter { item in
             guard item.matches(search: search), scoreFilter.matches(item) else { return false }
-            guard tagFilter != .all else { return true }
-            // Filtre « Étiquettes » : seules les activités dont les étiquettes sont déjà calculées et correspondent.
-            return tags[item.id].map(tagFilter.matches) ?? false
+            guard !tagFilters.isAll else { return true }
+            // Filtre « Étiquettes » : seules les activités dont les étiquettes sont déjà calculées et correspondent
+            // à au moins une des étiquettes choisies.
+            return tags[item.id].map(tagFilters.matches) ?? false
         }
     }
 
@@ -118,7 +120,7 @@ final class ActivityFeedModel {
             }
             tagsGeneration += 1
             errorMessage = nil
-            if tagFilter != .all { startComputingAllTags(session: session) }
+            if !tagFilters.isAll { startComputingAllTags(session: session) }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -130,19 +132,19 @@ final class ActivityFeedModel {
     }
 
     func applyFilters(preset: DatePreset, from: Date, to: Date, owners: Set<Int>, score: ScoreFilter,
-                      tag: TagFilter, session: AppSession) async {
+                      tags tagSelection: Set<TagFilter>, session: AppSession) async {
         let sameQuery = preset == datePreset && owners == ownerIDs
             && (preset != .custom || (from == customFrom && to == customTo))
         scoreFilter = score
-        tagFilter = tag
+        tagFilters = tagSelection.isAll ? [] : tagSelection
         visibleCount = Self.pageSize
-        if tag == .all {
+        if tagFilters.isAll {
             allTagsTask?.cancel()
             tagsProgress = nil
         }
         // Seuls les filtres de score / d'étiquettes ont changé : pas besoin de recharger Pipedrive.
         if sameQuery && hasLoaded {
-            if tag != .all { startComputingAllTags(session: session) }
+            if !tagFilters.isAll { startComputingAllTags(session: session) }
             return
         }
         datePreset = preset
@@ -154,7 +156,7 @@ final class ActivityFeedModel {
 
     /// Filtres d'origine : jusqu'à aujourd'hui, mes activités.
     func isDefaultFilter(myID: Int?) -> Bool {
-        datePreset == .defaultPreset && scoreFilter == .all && tagFilter == .all
+        datePreset == .defaultPreset && scoreFilter == .all && tagFilters.isAll
             && (ownerIDs.isEmpty || ownerIDs == Set([myID].compactMap { $0 }))
     }
 
