@@ -15,6 +15,9 @@ struct SettingsView: View {
     @State private var onoffMethod: OnOffMethod = .link
     @State private var onoffShortcutName = ""
     @State private var detectedOnOff: [String] = []
+    @State private var claudeFireURL = ""
+    @State private var claudeToken = ""
+    @State private var claudeMessage: String?
 
     var body: some View {
         Form {
@@ -123,6 +126,44 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    TextField("https://api.anthropic.com/v1/claude_code/routines/…/fire", text: $claudeFireURL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .font(.footnote.monospaced())
+                    SecureField(session.hasClaudeToken ? "Nouveau jeton (facultatif)" : "Jeton de la tâche", text: $claudeToken)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Button("Enregistrer") {
+                        do {
+                            try session.saveClaudeTrigger(fireURL: claudeFireURL, token: claudeToken)
+                            claudeToken = ""
+                            claudeFireURL = session.claudeFireURL
+                            claudeMessage = "✓ Claude sera prévenu à chaque note."
+                        } catch {
+                            claudeMessage = error.localizedDescription
+                        }
+                    }
+                    .disabled(claudeFireURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    if let claudeMessage {
+                        Text(claudeMessage)
+                            .font(.footnote)
+                            .foregroundStyle(claudeMessage.hasPrefix("✓") ? Color.green : Color.red)
+                    }
+                    if session.isClaudeTriggerReady {
+                        Button("Ne plus prévenir Claude en temps réel", role: .destructive) {
+                            session.removeClaudeTrigger()
+                            claudeFireURL = ""
+                            claudeMessage = nil
+                        }
+                    }
+                } header: {
+                    Text("Note pour Claude : en temps réel")
+                } footer: {
+                    Text("Sur claude.ai/code/routines, tâche « YCRM · Note pour Claude (temps réel) » › Modifier › Déclencheur + › API : copiez l'adresse (Fire URL) et générez le jeton, puis collez-les ici. Le jeton reste dans le trousseau de cet iPhone. Sans réglage, Claude lit les notes à 5h17 et 13h17.")
+                }
+
+                Section {
                     Button(savedPreferences ? "Réglages enregistrés ✓" : "Enregistrer les réglages") {
                         session.savePreferences(myEmail: myEmail, onoffTemplate: onoffTemplate,
                                                 superhumanTemplate: superhumanTemplate,
@@ -171,6 +212,7 @@ struct SettingsView: View {
         onoffMethod = session.onoffMethod
         onoffShortcutName = session.onoffShortcutName
         detectedOnOff = InstalledApps.onoffSchemes
+        claudeFireURL = session.claudeFireURL
     }
 
     private func connect() async {

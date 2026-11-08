@@ -567,7 +567,22 @@ struct ActivityListView: View {
             let api = try session.makeClient()
             let noteID = try await api.addNote(content: ClaudeNote.html(text), dealID: item.activity.dealID,
                                                personID: item.person?.id ?? item.activity.personID, orgID: item.orgID)
-            show(Toast(message: "✅ Note pour Claude enregistrée (\(item.clientName)) : Claude la lira à sa prochaine analyse (5h17 ou 13h17).") {
+            // Temps réel (demande d'Yves du 08/11/2026) : Claude est prévenu une fois le délai d'annulation passé.
+            let trigger = session.makeClaudeTrigger()
+            let dealID = item.activity.dealID
+            let fire: Task<Void, Never>? = trigger.map { trigger in
+                Task {
+                    do { try await Task.sleep(for: .seconds(6.5)) } catch { return }
+                    do {
+                        try await trigger.fire(text: ClaudeTrigger.payload(noteID: noteID, dealID: dealID))
+                    } catch {
+                        showError("Note enregistrée, mais Claude n'a pas pu être prévenu : \(error.localizedDescription) Il la lira à 5h17 ou 13h17.")
+                    }
+                }
+            }
+            let when = trigger == nil ? "à sa prochaine analyse (5h17 ou 13h17)" : "dans une minute environ"
+            show(Toast(message: "✅ Note pour Claude enregistrée (\(item.clientName)) : Claude la traite \(when).") {
+                fire?.cancel()
                 do {
                     try await session.makeClient().deleteNote(id: noteID)
                     show(Toast(message: "Note annulée."))

@@ -14,6 +14,8 @@ private enum StorageKeys {
     static let superhumanTemplate = "superhuman-link-template"
     static let onoffMethod = "onoff-method"
     static let onoffShortcut = "onoff-shortcut-name"
+    static let claudeFireURL = "claude-fire-url"
+    static let claudeToken = "claude-routine-token"
 }
 
 /// Façon de lancer un appel OnOff (aucun lien officiel n'existe).
@@ -45,6 +47,9 @@ final class AppSession {
     private(set) var superhumanTemplate: String
     private(set) var onoffMethod: OnOffMethod
     private(set) var onoffShortcutName: String
+    /// Adresse de déclenchement de la tâche Claude « Note pour Claude » (pas secrète ; le jeton est au trousseau).
+    private(set) var claudeFireURL: String
+    private(set) var hasClaudeToken: Bool
 
     private let keychain: KeychainStore
     private let defaults = UserDefaults.standard
@@ -62,6 +67,37 @@ final class AppSession {
         superhumanTemplate = defaults.string(forKey: StorageKeys.superhumanTemplate) ?? ActionLinks.defaultSuperhumanTemplate
         onoffMethod = defaults.string(forKey: StorageKeys.onoffMethod).flatMap(OnOffMethod.init(rawValue:)) ?? .link
         onoffShortcutName = defaults.string(forKey: StorageKeys.onoffShortcut) ?? "YCRM OnOff"
+        claudeFireURL = defaults.string(forKey: StorageKeys.claudeFireURL) ?? ""
+        hasClaudeToken = !(store.read(StorageKeys.claudeToken) ?? "").isEmpty
+    }
+
+    /// Claude prévenu en temps réel des « Notes pour Claude » : adresse et jeton enregistrés.
+    var isClaudeTriggerReady: Bool { hasClaudeToken && ClaudeTrigger.validURL(claudeFireURL) != nil }
+
+    /// Déclencheur de la tâche Claude, nil s'il n'est pas configuré.
+    func makeClaudeTrigger() -> ClaudeTrigger? {
+        guard let token = keychain.read(StorageKeys.claudeToken) else { return nil }
+        return try? ClaudeTrigger(fireURL: claudeFireURL, token: token)
+    }
+
+    /// Enregistre l'adresse de déclenchement et, s'il est saisi, le jeton (trousseau). Jeton vide = on garde l'ancien.
+    func saveClaudeTrigger(fireURL: String, token: String) throws {
+        guard let url = ClaudeTrigger.validURL(fireURL) else { throw ClaudeTrigger.TriggerError.invalidURL }
+        let token = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !token.isEmpty {
+            try keychain.save(token, account: StorageKeys.claudeToken)
+            hasClaudeToken = true
+        }
+        guard hasClaudeToken else { throw ClaudeTrigger.TriggerError.missingToken }
+        claudeFireURL = url.absoluteString
+        defaults.set(claudeFireURL, forKey: StorageKeys.claudeFireURL)
+    }
+
+    func removeClaudeTrigger() {
+        keychain.delete(StorageKeys.claudeToken)
+        defaults.removeObject(forKey: StorageKeys.claudeFireURL)
+        claudeFireURL = ""
+        hasClaudeToken = false
     }
 
     func makeClient() throws -> PipedriveClient {

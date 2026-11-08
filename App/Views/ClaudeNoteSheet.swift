@@ -31,7 +31,7 @@ struct ClaudeNoteSheet: View {
                     .padding(8)
                     .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.purple.opacity(0.07)))
                     .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.purple.opacity(0.25)))
-                Text("Écris ta correction pour Claude, sur cette affaire (ex. « la TMA est signée, la refonte non ») ou sur sa façon de détecter les devis (ex. « un BDC envoyé par Sophie = en signature »). La note est enregistrée sur l'affaire dans Pipedrive ; Claude la lit à sa prochaine analyse (5h17 ou 13h17).")
+                Text("Écris ta correction pour Claude, sur cette affaire (ex. « la TMA est signée, la refonte non ») ou sur sa façon de détecter les devis (ex. « un BDC envoyé par Sophie = en signature »). La note est enregistrée sur l'affaire dans Pipedrive ; Claude la traite tout de suite si « Note pour Claude : en temps réel » est réglé, sinon à 5h17 ou 13h17.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
