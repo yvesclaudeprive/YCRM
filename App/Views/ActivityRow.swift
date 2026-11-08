@@ -98,11 +98,11 @@ struct ActivityRow: View {
             HStack(alignment: .center, spacing: 8) {
                 if let name = item.organizationName, item.orgID != nil {
                     linkButton(name, font: .system(.title3, design: .rounded).weight(.bold),
-                               textColor: .yateoRed, iconColor: .yateoRed, action: .openOrganization)
+                               textColor: .primary, iconColor: .primary, action: .openOrganization)
                 } else {
                     Text(item.organizationName ?? "Sans société")
                         .font(.system(.title3, design: .rounded).weight(.bold))
-                        .foregroundStyle(Color.yateoRed)
+                        .foregroundStyle(Color.primary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 4)
@@ -141,9 +141,9 @@ struct ActivityRow: View {
         }
     }
 
-    /// Étiquettes pleines (texte blanc), avec le nom du ou des devis dedans (demandes d'Yves du 08/11/2026) :
-    /// « En signature -2 j : TMA » (orange, la plus chaude), « Devis envoyé -5 j : Refonte du site » (violet),
-    /// « 1er call à faire » (rose). Les unes sous les autres si elles ne tiennent pas sur une ligne.
+    /// Étiquettes pleines (texte blanc), une ligne par devis, objet en gras (demandes d'Yves du 08/11/2026) :
+    /// « En signature - TMA - 2j » (orange, la plus chaude), « Devis - Refonte du site - 206j » (rouge Yateo, comme
+    /// le score), « 1er call à faire » (rose). Les unes sous les autres si elles ne tiennent pas sur une ligne.
     private func tagsRow(_ tags: LeadTags) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 6) { tagViews(tags) }
@@ -153,37 +153,53 @@ struct ActivityRow: View {
 
     @ViewBuilder
     private func tagViews(_ tags: LeadTags) -> some View {
-        if let label = tags.signingLabel(timeZone: parisTimeZone) {
+        let signing = tags.signingLines(timeZone: parisTimeZone)
+        if !signing.isEmpty {
             Button {
                 perform(.showQuotes)
             } label: {
-                tagCapsule(label + "  ›", icon: "signature", color: .signingOrange)
+                tagCapsule(Self.attributed(signing), icon: "signature", color: .signingOrange)
             }
             .buttonStyle(PressableStyle())
             .accessibilityHint("Voir les devis en signature")
         }
-        if let label = tags.quoteSentLabel(timeZone: parisTimeZone) {
+        let quotes = tags.quoteLines(timeZone: parisTimeZone)
+        if !quotes.isEmpty {
             Button {
                 perform(.showQuotes)
             } label: {
-                tagCapsule(label + "  ›", icon: "doc.text.fill", color: .purple)
+                tagCapsule(Self.attributed(quotes), icon: "doc.text.fill", color: .yateoRed)
             }
             .buttonStyle(PressableStyle())
             .accessibilityHint("Voir le détail des devis envoyés")
         }
         if tags.firstCallToDo {
-            tagCapsule("1er call à faire", icon: "phone.fill", color: .pink)
+            tagCapsule(AttributedString("1er call à faire"), icon: "phone.fill", color: .pink)
         }
     }
 
-    private func tagCapsule(_ text: String, icon: String, color: Color) -> some View {
+    /// « Devis - **Refonte du site** - 206j », une ligne par devis, chevron « › » à la fin.
+    static func attributed(_ lines: [LeadTags.TagLine]) -> AttributedString {
+        var result = AttributedString()
+        for (index, line) in lines.enumerated() {
+            if index > 0 { result += AttributedString("\n") }
+            result += AttributedString(line.prefix + " - ")
+            var title = AttributedString(line.title)
+            title.font = .caption.weight(.heavy)
+            result += title
+            if let age = line.age { result += AttributedString(" - " + age) }
+        }
+        result += AttributedString("  ›")
+        return result
+    }
+
+    private func tagCapsule(_ text: AttributedString, icon: String, color: Color) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Image(systemName: icon)
             Text(text)
-                .lineLimit(3)
                 .multilineTextAlignment(.leading)
         }
-        .font(.caption.weight(.bold))
+        .font(.caption.weight(.medium))
         .foregroundStyle(.white)
         .padding(.horizontal, 9)
         .padding(.vertical, 4)

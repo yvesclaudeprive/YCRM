@@ -65,28 +65,44 @@ public struct LeadTags: Hashable, Sendable {
 
     public var isEmpty: Bool { !hasPendingQuote && !hasSigning && !firstCallToDo }
 
-    /// « En signature -2 j : Montée de version », « 2 en signature : TMA -2 j, Refonte -9 j » : nom du ou des devis
-    /// dans l'étiquette même, sans avoir à toucher (demandes d'Yves du 08/11/2026).
+    /// Une ligne de l'étiquette (demandes d'Yves du 08/11/2026) : « Devis - SEO / GEO - 149j », le titre en gras dans
+    /// l'app, une ligne par devis.
+    public struct TagLine: Hashable, Sendable {
+        /// « Devis » ou « En signature ».
+        public let prefix: String
+        public let title: String
+        /// « 149j », « auj. » (nil si la date est inconnue).
+        public let age: String?
+
+        public var text: String { ([prefix, title] + (age.map { [$0] } ?? [])).joined(separator: " - ") }
+    }
+
+    /// Lignes de l'étiquette « En signature » : « En signature - TMA - 2j ».
+    public func signingLines(now: Date = Date(), timeZone: TimeZone) -> [TagLine] {
+        Self.lines(prefix: "En signature", signing, now: now, timeZone: timeZone)
+    }
+
+    /// Lignes de l'étiquette « Devis envoyé » : « Devis - Refonte du site - 206j » (rien si signé).
+    public func quoteLines(now: Date = Date(), timeZone: TimeZone) -> [TagLine] {
+        guard hasPendingQuote else { return [] }
+        return Self.lines(prefix: "Devis", quotes, now: now, timeZone: timeZone)
+    }
+
+    static func lines(prefix: String, _ quotes: [QuoteSent], now: Date, timeZone: TimeZone) -> [TagLine] {
+        quotes.map { TagLine(prefix: prefix, title: $0.subject, age: $0.shortAgoText(now: now, timeZone: timeZone)) }
+    }
+
+    /// Texte de l'étiquette « En signature » (une ligne par devis).
     public func signingLabel(now: Date = Date(), timeZone: TimeZone) -> String? {
-        Self.label(single: "En signature", plural: "en signature", signing, now: now, timeZone: timeZone)
+        let lines = signingLines(now: now, timeZone: timeZone)
+        return lines.isEmpty ? nil : lines.map(\.text).joined(separator: "\n")
     }
 
-    static func label(single: String, plural: String, _ quotes: [QuoteSent], now: Date, timeZone: TimeZone) -> String? {
-        guard let first = quotes.first else { return nil }
-        func ago(_ quote: QuoteSent) -> String {
-            quote.shortAgoText(now: now, timeZone: timeZone).map { " \($0)" } ?? ""
-        }
-        if quotes.count == 1 {
-            return "\(single)\(ago(first)) : \(first.subject)"
-        }
-        return "\(quotes.count) \(plural) : " + quotes.map { $0.subject + ago($0) }.joined(separator: ", ")
-    }
-
-    /// « Devis envoyé -5 j : Refonte du site », « 2 devis envoyés : Audit sécurité -5 j, Refonte du site -206 j » ;
-    /// rien si le devis est signé (demandes d'Yves du 08/11/2026).
+    /// Texte de l'étiquette « Devis envoyé » : « Devis - Refonte du site - 206j », une ligne par devis ; rien si le
+    /// devis est signé (demandes d'Yves du 08/11/2026).
     public func quoteSentLabel(now: Date = Date(), timeZone: TimeZone) -> String? {
-        guard hasPendingQuote else { return nil }
-        return Self.label(single: "Devis envoyé", plural: "devis envoyés", quotes, now: now, timeZone: timeZone)
+        let lines = quoteLines(now: now, timeZone: timeZone)
+        return lines.isEmpty ? nil : lines.map(\.text).joined(separator: "\n")
     }
 
     static func daysBetween(_ from: String, _ to: String) -> Int? {
@@ -141,10 +157,10 @@ public struct QuoteSent: Hashable, Sendable, Identifiable {
         Self.ago(from: day, to: FrenchFormat.apiDay(from: now, timeZone: timeZone))
     }
 
-    /// Format court des étiquettes : « auj. », « -1 j », « -9 j ».
+    /// Format court des étiquettes : « auj. », « 1j », « 149j ».
     public func shortAgoText(now: Date = Date(), timeZone: TimeZone) -> String? {
         guard let days = LeadTags.daysBetween(day, FrenchFormat.apiDay(from: now, timeZone: timeZone)) else { return nil }
-        return days <= 0 ? "auj." : "-\(days) j"
+        return days <= 0 ? "auj." : "\(days)j"
     }
 
     public static func ago(from day: String, to today: String) -> String? {
