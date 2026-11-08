@@ -69,7 +69,7 @@ jobs:
           if [ -n "$XCODE" ]; then
             sudo xcode-select -s "$XCODE/Contents/Developer"
           fi
-          VERSION=$(xcodebuild -version | head -1)
+          VERSION=$(xcodebuild -version | sed -n 1p)
           echo "$VERSION"
           case "$VERSION" in
             "Xcode 26"*|"Xcode 27"*) ;;
