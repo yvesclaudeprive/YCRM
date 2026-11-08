@@ -107,7 +107,7 @@ struct ActivityListView: View {
         }
         .background(Color.appBackground.ignoresSafeArea())
         .overlay { placeholder }
-        .refreshable { await feed.reload(session: session) }
+        .refreshable { await feed.reload(session: session, fresh: true) }
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .overlay(alignment: .bottom) { toastView }
         .task {

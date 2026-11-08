@@ -96,7 +96,9 @@ final class ActivityFeedModel {
         visibleCount < filteredItems.count
     }
 
-    func reload(session: AppSession) async {
+    /// `fresh` : tirer vers le bas = tout relire, étiquettes comprises (demande d'Yves du 08/11/2026 : pas d'attente
+    /// de 15 min après une modification). Les autres rechargements (changement de filtre) gardent les étiquettes récentes.
+    func reload(session: AppSession, fresh: Bool = false) async {
         guard !isLoading else { return }
         isLoading = true
         defer {
@@ -115,7 +117,7 @@ final class ActivityFeedModel {
             visibleCount = Self.pageSize
             history = [:]
             // Étiquettes récentes conservées (évite de tout recalculer à chaque rechargement)…
-            let freshSince = Date().addingTimeInterval(-Self.tagsLifetime)
+            let freshSince = fresh ? Date.distantFuture : Date().addingTimeInterval(-Self.tagsLifetime)
             for (id, date) in tagsComputedAt where date < freshSince {
                 tags[id] = nil
                 tagsComputedAt[id] = nil
