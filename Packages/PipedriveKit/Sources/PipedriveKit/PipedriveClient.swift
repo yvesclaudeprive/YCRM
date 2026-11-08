@@ -169,10 +169,13 @@ public struct PipedriveClient: Sendable {
 
     // MARK: Affaires, personnes, sociétés (par lots de 100)
 
-    public func deals(ids: [Int], scoreCode: String?) async throws -> [DealSummary] {
+    public func deals(ids: [Int], scoreCode: String?, signedCode: String? = nil) async throws -> [DealSummary] {
         var extra: [URLQueryItem] = []
-        if let scoreCode { extra.append(URLQueryItem(name: "custom_fields", value: scoreCode)) }
-        return try await batch("/api/v2/deals", ids: ids, extra: extra).compactMap { DealSummary(json: $0, scoreCode: scoreCode) }
+        let codes = [scoreCode, signedCode].compactMap { $0 }
+        if !codes.isEmpty { extra.append(URLQueryItem(name: "custom_fields", value: codes.joined(separator: ","))) }
+        return try await batch("/api/v2/deals", ids: ids, extra: extra).compactMap {
+            DealSummary(json: $0, scoreCode: scoreCode, signedCode: signedCode)
+        }
     }
 
     public func persons(ids: [Int]) async throws -> [PersonContact] {

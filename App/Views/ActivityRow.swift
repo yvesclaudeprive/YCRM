@@ -146,10 +146,12 @@ struct ActivityRow: View {
                 Button {
                     perform(.showQuotes)
                 } label: {
-                    tagCapsule(label + "  ›", icon: "doc.text.fill", color: .purple)
+                    // Signé : vert ; envoyé (en attente) : violet.
+                    tagCapsule(label + "  ›", icon: tags.isSigned ? "checkmark.seal.fill" : "doc.text.fill",
+                               color: tags.isSigned ? .green : .purple)
                 }
                 .buttonStyle(PressableStyle())
-                .accessibilityHint("Voir le détail des devis envoyés")
+                .accessibilityHint(tags.isSigned ? "Voir la signature et les devis" : "Voir le détail des devis envoyés")
             }
             if tags.firstCallToDo {
                 tagCapsule("1er call à faire", icon: "phone.fill", color: .pink)

@@ -5,6 +5,8 @@ import Foundation
 public struct ActivityFeedLoader: Sendable {
     /// Nom du champ d'affaire utilisé pour le tri (retrouvé par son nom, le code dépend du compte).
     public static let scoreFieldName = "Score priorisation"
+    /// Champ d'affaire facultatif « Contrat signé le » (date) : s'il existe, l'étiquette passe en « Devis signé ».
+    public static let signedFieldName = "Contrat signé le"
 
     let client: PipedriveClient
 
@@ -27,9 +29,11 @@ public struct ActivityFeedLoader: Sendable {
         }
         var seen = Set<Int>()
         let activities = all.filter { filter.contains(day: $0.localDay(timeZone: timeZone)) && seen.insert($0.id).inserted }
-        let scoreCode = (try? await fieldsRequest)?.first { Label.matches($0.name, Self.scoreFieldName) }?.code
+        let fields = (try? await fieldsRequest) ?? []
+        let scoreCode = fields.first { Label.matches($0.name, Self.scoreFieldName) }?.code
+        let signedCode = fields.first { Label.matches($0.name, Self.signedFieldName) }?.code
 
-        async let dealsRequest = client.deals(ids: activities.compactMap(\.dealID), scoreCode: scoreCode)
+        async let dealsRequest = client.deals(ids: activities.compactMap(\.dealID), scoreCode: scoreCode, signedCode: signedCode)
         async let personsRequest = client.persons(ids: activities.compactMap(\.personID))
         let dealList = try await dealsRequest
         let personList = try await personsRequest

@@ -23,6 +23,9 @@ struct QuoteSheet: View {
                         }
                     }
                     .padding(.bottom, 4)
+                    if let signature = tags.signature {
+                        signatureCard(signature)
+                    }
                     if tags.quotes.isEmpty {
                         Text("Aucun devis envoyé enregistré sur cette affaire.")
                             .foregroundStyle(.secondary)
@@ -30,7 +33,7 @@ struct QuoteSheet: View {
                     ForEach(tags.quotes) { quote in
                         card(quote)
                     }
-                    Text("D'après les activités terminées « Devis envoyé » (ou dont le texte parle d'un devis envoyé) de l'affaire dans Pipedrive.")
+                    Text("D'après les activités terminées « Devis envoyé » de l'affaire dans Pipedrive. « Signé » : affaire gagnée, champ « Contrat signé le », ou note / activité qui dit « signé » après le dernier devis.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .padding(.top, 4)
@@ -38,7 +41,7 @@ struct QuoteSheet: View {
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .navigationTitle(tags.quotes.count > 1 ? "\(tags.quotes.count) devis envoyés" : "Devis envoyé")
+            .navigationTitle(tags.isSigned ? "Devis signé" : (tags.quotes.count > 1 ? "\(tags.quotes.count) devis envoyés" : "Devis envoyé"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -54,6 +57,33 @@ struct QuoteSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationBackground(.background)
+    }
+
+    /// Preuve de signature : verte si elle date du dernier devis ou après, grise sinon (un devis plus récent attend).
+    private func signatureCard(_ signature: SignatureEvidence) -> some View {
+        let color: Color = tags.isSigned ? .green : .gray
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.seal.fill")
+                Text(tags.isSigned ? "Signé" : "Signé (avant le dernier devis)")
+                    .fontWeight(.bold)
+                Spacer(minLength: 4)
+                Text(signature.dateText)
+                    .foregroundStyle(.secondary)
+            }
+            .font(.subheadline)
+            .foregroundStyle(color)
+            Text(highlighted(signature.text))
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(signature.sourceLabel)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(color.opacity(0.1)))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(color.opacity(0.25), lineWidth: 1))
     }
 
     private func card(_ quote: QuoteSent) -> some View {

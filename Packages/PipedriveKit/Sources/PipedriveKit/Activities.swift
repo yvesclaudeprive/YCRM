@@ -154,28 +154,42 @@ public struct DealSummary: Hashable, Sendable, Identifiable {
     public let score: Double?
     /// « open », « won », « lost » (nil si inconnu).
     public let status: String?
+    /// Date de gain (« Gagnée »), format API.
+    public let wonTime: String?
+    /// Champ d'affaire « Contrat signé le » (AAAA-MM-JJ), s'il existe dans le compte (rempli par ex. depuis l'yntranet).
+    public let signedDate: String?
 
-    public init(id: Int, title: String, orgID: Int?, personID: Int?, score: Double?, status: String? = nil) {
+    public init(id: Int, title: String, orgID: Int?, personID: Int?, score: Double?, status: String? = nil,
+                wonTime: String? = nil, signedDate: String? = nil) {
         self.id = id
         self.title = title
         self.orgID = orgID
         self.personID = personID
         self.score = score
         self.status = status
+        self.wonTime = wonTime
+        self.signedDate = signedDate
     }
 
     /// Affaire en cours (ni gagnée ni perdue) ; vrai si le statut est inconnu.
     public var isOpen: Bool { status == nil || status == "open" }
 
-    init?(json: JSONValue, scoreCode: String?) {
+    init?(json: JSONValue, scoreCode: String?, signedCode: String? = nil) {
         guard let id = json["id"].intValue else { return nil }
         var score: Double?
         if let scoreCode {
             let raw = json["custom_fields"][scoreCode]
             score = raw.isNull ? json[scoreCode].doubleValue : (raw.doubleValue ?? raw["value"].doubleValue)
         }
+        var signed: String?
+        if let signedCode {
+            let raw = json["custom_fields"][signedCode]
+            signed = (raw.isNull ? json[signedCode].stringValue : (raw.stringValue ?? raw["value"].stringValue))
+                .flatMap { $0.isEmpty ? nil : $0 }
+        }
         self.init(id: id, title: json["title"].stringValue ?? "Affaire #\(id)", orgID: json["org_id"].intValue,
-                  personID: json["person_id"].intValue, score: score, status: json["status"].stringValue)
+                  personID: json["person_id"].intValue, score: score, status: json["status"].stringValue,
+                  wonTime: json["won_time"].stringValue, signedDate: signed)
     }
 }
 
