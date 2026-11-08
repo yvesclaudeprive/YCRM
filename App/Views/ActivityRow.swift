@@ -11,6 +11,8 @@ enum ActivityAction {
     case newMail, replyMail, mailToSelf
     // Historique (fenêtres)
     case showHistory, showLeexi
+    /// Étiquette « Devis envoyé » touchée : détail des devis envoyés.
+    case showQuotes
     /// Bouton grisé touché : on explique pourquoi.
     case explain(String)
 }
@@ -141,7 +143,13 @@ struct ActivityRow: View {
     private func tagsRow(_ tags: LeadTags) -> some View {
         HStack(spacing: 6) {
             if let label = tags.quoteSentLabel(timeZone: parisTimeZone) {
-                tagCapsule(label, icon: "doc.text.fill", color: .purple)
+                Button {
+                    perform(.showQuotes)
+                } label: {
+                    tagCapsule(label + "  ›", icon: "doc.text.fill", color: .purple)
+                }
+                .buttonStyle(PressableStyle())
+                .accessibilityHint("Voir le détail des devis envoyés")
             }
             if tags.firstCallToDo {
                 tagCapsule("1er call à faire", icon: "phone.fill", color: .pink)

@@ -13,7 +13,7 @@ struct FilterView: View {
     let onApply: (DatePreset, Date, Date, Set<Int>, ScoreFilter) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedPreset: DatePreset = .untilToday
+    @State private var selectedPreset: DatePreset = .defaultPreset
     @State private var from = Date()
     @State private var to = Date()
     @State private var selectedOwners: Set<Int> = []

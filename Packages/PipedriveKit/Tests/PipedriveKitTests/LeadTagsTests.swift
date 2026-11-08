@@ -66,7 +66,7 @@ final class LeadTagsTests: XCTestCase {
 
     static let dealDone = """
     {"success":true,"data":[
-      {"id":11,"subject":"Devis SEO envoyé","type":"devis_envoy","due_date":"2026-11-03","done":true,"deal_id":100,"person_id":200},
+      {"id":11,"subject":"Devis SEO envoyé","type":"devis_envoy","due_date":"2026-11-03","done":true,"deal_id":100,"person_id":200,"note":"<p>Envoyé par mail, <b>relance</b> lundi</p>"},
       {"id":12,"subject":"Devis SEO mis à jour renvoyé","type":"devis_envoy","due_date":"2026-11-05","done":true,"deal_id":100,"person_id":200},
       {"id":13,"subject":"Répondeur sans message","type":"rpondeur_sans_message","due_date":"2026-11-02","done":true,"deal_id":100,"person_id":200}
     ]}
@@ -80,15 +80,32 @@ final class LeadTagsTests: XCTestCase {
             """),
             "GET /api/v1/notes": .init(status: 200, body: #"{"success":true,"data":[{"id":1,"content":"<p>Note simple</p>"}]}"#),
         ])
-        let tags = try await LeadTagsLoader(client: client(transport)).load(for: item(), typeNames: names, timeZone: paris)
+        let now = Date(timeIntervalSince1970: 1_794_135_600) // 08/11/2026 à 12:00
+        let tags = try await LeadTagsLoader(client: client(transport)).load(for: item(), typeNames: names, timeZone: paris,
+                                                                            now: now)
         XCTAssertEqual(tags.quoteSentDay, "2026-11-05", "le plus récent")
         XCTAssertTrue(tags.firstCallToDo, "répondeur et appel manqué ne sont pas des échanges")
+        XCTAssertEqual(tags.quotes.map(\.subject), ["Devis SEO mis à jour renvoyé", "Devis SEO envoyé"], "détail : le plus récent d'abord")
+        XCTAssertEqual(tags.quotes.first?.dateText, "5 novembre")
+        XCTAssertEqual(tags.quotes.first?.agoText(now: now, timeZone: paris), "il y a 3 j")
+        XCTAssertEqual(tags.quoteSentLabel(now: now, timeZone: paris), "Devis envoyé · il y a 3 j")
 
         let recorded = await transport.recorded
         let first = try XCTUnwrap(recorded.first)
         XCTAssertEqual(query(first, "deal_id"), "100")
         XCTAssertEqual(query(first, "done"), "true")
         XCTAssertEqual(recorded.count, 4, "affaire, personne, puis notes Leexi de l'affaire et de la personne")
+    }
+
+    func testQuoteNoteIsPlainText() async throws {
+        let transport = MockTransport([
+            "GET /api/v2/activities?deal_id=100": .init(status: 200, body: Self.dealDone),
+            "GET /api/v2/activities?person_id=200": .init(status: 200, body: #"{"success":true,"data":[]}"#),
+            "GET /api/v1/notes": .init(status: 200, body: #"{"success":true,"data":[]}"#),
+        ])
+        let tags = try await LeadTagsLoader(client: client(transport)).load(for: item(), typeNames: names, timeZone: paris)
+        XCTAssertEqual(tags.quotes.last?.note, "Envoyé par mail, relance lundi")
+        XCTAssertNil(tags.quotes.first?.note)
     }
 
     func testAnsweredAircallCallOnPersonMeansSpoken() async throws {

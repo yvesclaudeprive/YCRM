@@ -6,30 +6,33 @@ import Foundation
 /// - « 1er call à faire » : aucun échange de vive voix connu avec le contact (appel décroché, « Call effectué »,
 ///   rendez-vous, enregistrement Leexi). Répondeurs, appels manqués, SMS et e-mails ne comptent pas.
 public struct LeadTags: Hashable, Sendable {
-    /// Jour (AAAA-MM-JJ, heure de Paris) du dernier « Devis envoyé », s'il y en a un.
-    public let quoteSentDay: String?
+    /// Devis envoyés sur l'affaire (activités terminées), le plus récent d'abord : détail au toucher de l'étiquette.
+    public let quotes: [QuoteSent]
     public let firstCallToDo: Bool
 
-    public init(quoteSentDay: String?, firstCallToDo: Bool) {
-        self.quoteSentDay = quoteSentDay
+    public init(quotes: [QuoteSent], firstCallToDo: Bool) {
+        self.quotes = quotes
         self.firstCallToDo = firstCallToDo
     }
 
-    public static let none = LeadTags(quoteSentDay: nil, firstCallToDo: false)
+    /// Raccourci (tests) : un seul devis envoyé ce jour-là.
+    public init(quoteSentDay: String?, firstCallToDo: Bool) {
+        self.init(quotes: quoteSentDay.map { [QuoteSent(id: 0, subject: "Devis envoyé", day: $0, dateText: $0, note: nil)] } ?? [],
+                  firstCallToDo: firstCallToDo)
+    }
+
+    public static let none = LeadTags(quotes: [], firstCallToDo: false)
+
+    /// Jour (AAAA-MM-JJ, heure de Paris) du dernier « Devis envoyé », s'il y en a un.
+    public var quoteSentDay: String? { quotes.first?.day }
 
     public var isEmpty: Bool { quoteSentDay == nil && !firstCallToDo }
 
     /// « Devis envoyé · aujourd'hui », « Devis envoyé · hier », « Devis envoyé · il y a 5 j ».
     public func quoteSentLabel(now: Date = Date(), timeZone: TimeZone) -> String? {
-        guard let quoteSentDay else { return nil }
-        guard let days = Self.daysBetween(quoteSentDay, FrenchFormat.apiDay(from: now, timeZone: timeZone)) else {
-            return "Devis envoyé"
-        }
-        switch days {
-        case ..<1: return "Devis envoyé · aujourd'hui"
-        case 1: return "Devis envoyé · hier"
-        default: return "Devis envoyé · il y a \(days) j"
-        }
+        guard let latest = quotes.first else { return nil }
+        guard let ago = latest.agoText(now: now, timeZone: timeZone) else { return "Devis envoyé" }
+        return "Devis envoyé · \(ago)"
     }
 
     static func daysBetween(_ from: String, _ to: String) -> Int? {
@@ -44,6 +47,37 @@ public struct LeadTags: Hashable, Sendable {
             return nil
         }
         return calendar.dateComponents([.day], from: start, to: end).day
+    }
+}
+
+/// Un devis envoyé (activité terminée de l'affaire), pour la fenêtre de détail.
+public struct QuoteSent: Hashable, Sendable, Identifiable {
+    public let id: Int
+    /// Texte de l'activité (« Devis SEO envoyé »).
+    public let subject: String
+    /// Jour à l'heure de Paris (AAAA-MM-JJ).
+    public let day: String
+    /// Date affichée (« 3 novembre à 14:30 »).
+    public let dateText: String
+    /// Note de l'activité en texte simple, s'il y en a une.
+    public let note: String?
+
+    public init(id: Int, subject: String, day: String, dateText: String, note: String?) {
+        self.id = id
+        self.subject = subject
+        self.day = day
+        self.dateText = dateText
+        self.note = note
+    }
+
+    /// « aujourd'hui », « hier », « il y a 5 j ».
+    public func agoText(now: Date = Date(), timeZone: TimeZone) -> String? {
+        guard let days = LeadTags.daysBetween(day, FrenchFormat.apiDay(from: now, timeZone: timeZone)) else { return nil }
+        switch days {
+        case ..<1: return "aujourd'hui"
+        case 1: return "hier"
+        default: return "il y a \(days) j"
+        }
     }
 }
 
@@ -80,7 +114,8 @@ public struct LeadTagsLoader: Sendable {
         self.client = client
     }
 
-    public func load(for item: ActivityItem, typeNames: [String: String], timeZone: TimeZone) async throws -> LeadTags {
+    public func load(for item: ActivityItem, typeNames: [String: String], timeZone: TimeZone,
+                     now: Date = Date()) async throws -> LeadTags {
         let dealID = item.activity.dealID
         let personID = item.person?.id ?? item.activity.personID
         guard dealID != nil || personID != nil else { return .none }
@@ -107,10 +142,16 @@ public struct LeadTagsLoader: Sendable {
 
         // Devis : ceux de l'affaire ; sans affaire, ceux de la personne.
         let quoteSource = dealID != nil ? dealDone : personDone
-        let quoteDay = quoteSource
+        let quotes = quoteSource
             .filter { LeadTagRules.isQuoteSent($0, typeNames: typeNames) }
-            .compactMap { $0.localDay(timeZone: timeZone) }
-            .max()
-        return LeadTags(quoteSentDay: quoteDay, firstCallToDo: !spoke)
+            .compactMap { activity -> QuoteSent? in
+                guard let day = activity.localDay(timeZone: timeZone) else { return nil }
+                let note = activity.note.map(PlainText.from(html:))?.trimmingCharacters(in: .whitespacesAndNewlines)
+                return QuoteSent(id: activity.id, subject: activity.subject.isEmpty ? "Devis envoyé" : activity.subject,
+                                 day: day, dateText: activity.displayDate(now: now),
+                                 note: (note?.isEmpty ?? true) ? nil : note)
+            }
+            .sorted { $0.day != $1.day ? $0.day > $1.day : $0.id > $1.id }
+        return LeadTags(quotes: quotes, firstCallToDo: !spoke)
     }
 }

@@ -228,6 +228,20 @@ public struct ActivityItem: Hashable, Sendable, Identifiable {
     }
 
     /// Tri par défaut : score de priorisation décroissant (sans score en bas), puis date, puis heure.
+    /// À venir (échéance après aujourd'hui, heure de Paris) ; les activités sans date comptent comme à venir.
+    public func isUpcoming(today: String, timeZone: TimeZone) -> Bool {
+        guard let day = activity.localDay(timeZone: timeZone) else { return true }
+        return day > today
+    }
+
+    /// Ordre de la liste (demande d'Yves du 08/11/2026) : d'abord les activités en retard et du jour,
+    /// puis celles à venir ; dans chaque groupe, par score (sans score à la fin), puis par date.
+    public static func feedOrder(_ items: [ActivityItem], today: String, timeZone: TimeZone) -> [ActivityItem] {
+        let upcoming = items.filter { $0.isUpcoming(today: today, timeZone: timeZone) }
+        let due = items.filter { !$0.isUpcoming(today: today, timeZone: timeZone) }
+        return due.sorted(by: prioritySort) + upcoming.sorted(by: prioritySort)
+    }
+
     public static func prioritySort(_ lhs: ActivityItem, _ rhs: ActivityItem) -> Bool {
         switch (lhs.score, rhs.score) {
         case let (l?, r?) where l != r: return l > r
@@ -278,7 +292,11 @@ public enum ScoreFilter: String, CaseIterable, Sendable, Identifiable {
 
 /// Raccourcis du filtre « Date ».
 public enum DatePreset: String, CaseIterable, Sendable, Identifiable {
-    case untilToday, today, overdue, upcoming, next7Days, next30Days, all, custom
+    case all, untilToday, today, overdue, upcoming, next7Days, next30Days, custom
+
+    /// Par défaut (demande d'Yves du 08/11/2026) : toutes les activités non terminées,
+    /// les retards et celles du jour d'abord, puis celles à venir.
+    public static let defaultPreset = DatePreset.all
 
     public var id: String { rawValue }
 
@@ -290,7 +308,7 @@ public enum DatePreset: String, CaseIterable, Sendable, Identifiable {
         case .upcoming: return "À venir (à partir de demain)"
         case .next7Days: return "Aujourd'hui + 7 jours"
         case .next30Days: return "Aujourd'hui + 30 jours"
-        case .all: return "Toutes les dates (passées et futures)"
+        case .all: return "Toutes (retard et jour d'abord, puis à venir)"
         case .custom: return "Période personnalisée"
         }
     }

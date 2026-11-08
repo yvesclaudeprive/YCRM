@@ -13,7 +13,8 @@ public struct ActivityFeedLoader: Sendable {
     }
 
     /// Activités ouvertes des utilisateurs choisis (par défaut : soi-même), filtrées par date.
-    public func load(ownerIDs: [Int], filter: ActivityDateFilter, timeZone: TimeZone) async throws -> [ActivityItem] {
+    public func load(ownerIDs: [Int], filter: ActivityDateFilter, timeZone: TimeZone,
+                     now: Date = Date()) async throws -> [ActivityItem] {
         async let fieldsRequest = client.dealFields()
         let client = self.client
         let all = try await withThrowingTaskGroup(of: [Activity].self) { group in
@@ -38,14 +39,14 @@ public struct ActivityFeedLoader: Sendable {
         let orgIDs = activities.compactMap { $0.orgID ?? $0.dealID.flatMap { deals[$0]?.orgID } }
         let orgNames = try await client.organizationNames(ids: orgIDs)
 
-        return activities.map { activity in
+        let items = activities.map { activity in
             let deal = activity.dealID.flatMap { deals[$0] }
             let personID = activity.personID ?? deal?.personID
             let orgID = activity.orgID ?? deal?.orgID
             return ActivityItem(activity: activity, organizationName: orgID.flatMap { orgNames[$0] },
                                 person: personID.flatMap { persons[$0] }, deal: deal)
         }
-        .sorted(by: ActivityItem.prioritySort)
+        return ActivityItem.feedOrder(items, today: FrenchFormat.apiDay(from: now, timeZone: timeZone), timeZone: timeZone)
     }
 }
 

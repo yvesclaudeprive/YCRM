@@ -25,7 +25,7 @@ final class ActivityFeedModel {
     private(set) var hasLoaded = false
     private(set) var errorMessage: String?
     // Filtres : période (défaut « jusqu'à aujourd'hui ») et utilisateurs (défaut : moi).
-    private(set) var datePreset: DatePreset = .untilToday
+    private(set) var datePreset: DatePreset = .defaultPreset
     private(set) var customFrom = Date()
     private(set) var customTo = Date()
     private(set) var ownerIDs: Set<Int> = []
@@ -49,9 +49,23 @@ final class ActivityFeedModel {
         items.filter { $0.matches(search: search) && scoreFilter.matches($0) }
     }
 
-    /// Nombre d'activités sans score dans la liste affichée (bandeau « Sans score »).
-    var unscoredCount: Int {
-        filteredItems.filter { $0.score == nil }.count
+    /// Jour courant à Paris (groupes « en retard / du jour » puis « à venir »).
+    var today: String { FrenchFormat.apiDay(from: Date(), timeZone: parisTimeZone) }
+
+    func isUpcoming(_ item: ActivityItem) -> Bool {
+        item.isUpcoming(today: today, timeZone: parisTimeZone)
+    }
+
+    /// Nombre d'activités à venir dans la liste affichée (bandeau « À venir »).
+    var upcomingCount: Int {
+        let today = self.today
+        return filteredItems.filter { $0.isUpcoming(today: today, timeZone: parisTimeZone) }.count
+    }
+
+    /// Nombre d'activités sans score du même groupe (en retard / du jour, ou à venir) : bandeau « Sans score ».
+    func unscoredCount(upcoming: Bool) -> Int {
+        let today = self.today
+        return filteredItems.filter { $0.score == nil && $0.isUpcoming(today: today, timeZone: parisTimeZone) == upcoming }.count
     }
 
     var visibleItems: [ActivityItem] {
@@ -108,7 +122,7 @@ final class ActivityFeedModel {
 
     /// Filtres d'origine : jusqu'à aujourd'hui, mes activités.
     func isDefaultFilter(myID: Int?) -> Bool {
-        datePreset == .untilToday && scoreFilter == .all
+        datePreset == .defaultPreset && scoreFilter == .all
             && (ownerIDs.isEmpty || ownerIDs == Set([myID].compactMap { $0 }))
     }
 

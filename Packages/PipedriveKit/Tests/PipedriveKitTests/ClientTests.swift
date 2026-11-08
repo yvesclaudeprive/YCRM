@@ -21,7 +21,7 @@ final class ClientTests: XCTestCase {
         let transport = feedTransport()
         let loader = ActivityFeedLoader(client: PipedriveClient(configuration: config, transport: transport))
         let filter = ActivityDateFilter(from: nil, to: "2026-11-07")
-        let items = try await loader.load(ownerIDs: [7], filter: filter, timeZone: paris)
+        let items = try await loader.load(ownerIDs: [7], filter: filter, timeZone: paris, now: Self.seventhNoon)
 
         XCTAssertEqual(items.map(\.id), [2, 1, 3], "score 87, puis 42,5, puis sans score ; l'activité future est exclue")
         XCTAssertEqual(items[0].organizationName, "Entreprise Gamma", "société retrouvée par l'affaire")
@@ -51,8 +51,22 @@ final class ClientTests: XCTestCase {
             "GET /api/v2/organizations": .init(status: 200, body: Fixtures.organizations),
         ])
         let loader = ActivityFeedLoader(client: PipedriveClient(configuration: config, transport: transport))
-        let items = try await loader.load(ownerIDs: [7], filter: ActivityDateFilter(from: nil, to: "2026-11-07"), timeZone: paris)
+        let items = try await loader.load(ownerIDs: [7], filter: ActivityDateFilter(from: nil, to: "2026-11-07"), timeZone: paris,
+                                          now: Self.seventhNoon)
         XCTAssertEqual(items.map(\.id), [1, 3, 2], "sans score : tri par date")
+    }
+
+    /// 07/11/2026 en début d'après-midi à Paris.
+    static let seventhNoon = Date(timeIntervalSince1970: 1_794_052_800) // 13:00 à Paris
+
+    func testUpcomingActivitiesComeAfterOverdueAndToday() async throws {
+        let loader = ActivityFeedLoader(client: PipedriveClient(configuration: config, transport: feedTransport()))
+        let items = try await loader.load(ownerIDs: [7], filter: DatePreset.defaultPreset.filter(timeZone: paris),
+                                          timeZone: paris, now: Self.seventhNoon)
+        XCTAssertEqual(items.map(\.id), [2, 1, 3, 4],
+                       "en retard et du jour par score (sans score à la fin), puis l'activité à venir malgré son score")
+        XCTAssertFalse(items[2].isUpcoming(today: "2026-11-07", timeZone: paris))
+        XCTAssertTrue(items[3].isUpcoming(today: "2026-11-07", timeZone: paris))
     }
 
     func testFeedForSeveralUsersMergesWithoutDuplicates() async throws {

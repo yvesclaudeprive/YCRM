@@ -37,6 +37,7 @@ struct ActivityListView: View {
     @State private var busyItemIDs: Set<Int> = []
     @State private var whatsappInstalled = true
     @State private var historySheet: HistoryRequest?
+    @State private var quoteSheet: ActivityItem?
     @State private var explanation: String?
 
     private enum CallChannel {
@@ -53,8 +54,15 @@ struct ActivityListView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 ForEach(Array(feed.visibleItems.enumerated()), id: \.element.id) { index, item in
-                    if item.score == nil, index == 0 || feed.visibleItems[index - 1].score != nil {
-                        unscoredHeader
+                    let upcoming = feed.isUpcoming(item)
+                    let previous = index > 0 ? feed.visibleItems[index - 1] : nil
+                    let groupStarts = previous.map { feed.isUpcoming($0) != upcoming } ?? true
+                    if upcoming, groupStarts {
+                        sectionHeader(icon: "calendar.badge.clock", text: "À venir", count: feed.upcomingCount)
+                    }
+                    if item.score == nil, groupStarts || previous?.score != nil {
+                        sectionHeader(icon: "number.circle", text: "Sans score",
+                                      count: feed.unscoredCount(upcoming: upcoming))
                     }
                     ActivityRow(
                         item: item,
@@ -108,6 +116,11 @@ struct ActivityListView: View {
         }
         .sheet(item: $historySheet) { request in
             HistorySheet(request: request, feed: feed)
+        }
+        .sheet(item: $quoteSheet) { item in
+            QuoteSheet(item: item, tags: feed.tags[item.id] ?? .none) {
+                open(pipedriveLink(for: item), failure: "Aucune fiche Pipedrive liée à cette activité.")
+            }
         }
         .alert("Bouton indisponible", isPresented: explanationBinding, presenting: explanation) { _ in
             Button("OK", role: .cancel) {}
@@ -203,11 +216,12 @@ struct ActivityListView: View {
         Binding(get: { feed.search }, set: { feed.updateSearch($0) })
     }
 
-    /// Bandeau avant la première activité sans score (elles sont classées après les autres).
-    private var unscoredHeader: some View {
+    /// Bandeau de groupe : « À venir · N activités » (après les retards et le jour),
+    /// « Sans score · N activités » (après les activités notées du même groupe).
+    private func sectionHeader(icon: String, text: String, count: Int) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: "number.circle")
-            Text("Sans score · \(feed.unscoredCount) activité\(feed.unscoredCount > 1 ? "s" : "")")
+            Image(systemName: icon)
+            Text("\(text) · \(count) activité\(count > 1 ? "s" : "")")
         }
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(.secondary)
@@ -295,6 +309,8 @@ struct ActivityListView: View {
         case .showHistory, .showLeexi:
             historySheet = HistoryRequest(item: item, section: action.isLeexi ? .leexi : .activities)
             Task { await feed.loadHistory(for: item, session: session) }
+        case .showQuotes:
+            quoteSheet = item
         case .explain(let reason):
             explanation = reason
         case .openOrganization:
