@@ -32,6 +32,13 @@ final class QuoteAnalysisTests: XCTestCase {
         XCTAssertEqual(analysis.footer, "Analyse Claude du 08/11/2026 à 13:17")
     }
 
+    func testFieldName() {
+        XCTAssertTrue(ActivityFeedLoader.isQuoteAnalysisField("Devis en attente (claude)"))
+        XCTAssertTrue(ActivityFeedLoader.isQuoteAnalysisField("Devis en attente"))
+        XCTAssertTrue(ActivityFeedLoader.isQuoteAnalysisField(ActivityFeedLoader.quoteAnalysisFieldName))
+        XCTAssertFalse(ActivityFeedLoader.isQuoteAnalysisField("Devis envoyé"))
+    }
+
     func testEmptyFieldIsNotAnalyzed() {
         XCTAssertNil(QuoteAnalysis(text: nil))
         XCTAssertNil(QuoteAnalysis(text: "  \n "))

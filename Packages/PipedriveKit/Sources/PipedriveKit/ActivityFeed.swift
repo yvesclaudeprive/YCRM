@@ -7,8 +7,13 @@ public struct ActivityFeedLoader: Sendable {
     public static let scoreFieldName = "Score priorisation"
     /// Champ d'affaire facultatif « Contrat signé le » (date) : s'il existe, le devis est considéré signé (plus d'étiquette).
     public static let signedFieldName = "Contrat signé le"
-    /// Champ d'affaire « Devis en attente » (texte long) : analyse des devis écrite par Claude deux fois par jour.
-    public static let quoteAnalysisFieldName = "Devis en attente"
+    /// Champ d'affaire « Devis en attente (claude) » (texte long, nom choisi par Yves le 08/11/2026) : analyse des
+    /// devis écrite par Claude deux fois par jour. Tout champ dont le nom commence par « Devis en attente » convient.
+    public static let quoteAnalysisFieldName = "Devis en attente (claude)"
+
+    static func isQuoteAnalysisField(_ name: String) -> Bool {
+        Label.normalized(name).hasPrefix("devis en attente")
+    }
 
     let client: PipedriveClient
 
@@ -34,7 +39,7 @@ public struct ActivityFeedLoader: Sendable {
         let fields = (try? await fieldsRequest) ?? []
         let scoreCode = fields.first { Label.matches($0.name, Self.scoreFieldName) }?.code
         let signedCode = fields.first { Label.matches($0.name, Self.signedFieldName) }?.code
-        let analysisCode = fields.first { Label.matches($0.name, Self.quoteAnalysisFieldName) }?.code
+        let analysisCode = fields.first { Self.isQuoteAnalysisField($0.name) }?.code
 
         async let dealsRequest = client.deals(ids: activities.compactMap(\.dealID), scoreCode: scoreCode,
                                               signedCode: signedCode, analysisCode: analysisCode)
