@@ -120,6 +120,9 @@ public enum FrenchFormat {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         if let date = formatter.date(from: text) { return date }
+        // Avec millisecondes : « 2026-11-03T19:14:30.000Z » (e-mails synchronisés) : on les retire.
+        let withoutFraction = text.replacingOccurrences(of: #"\.[0-9]+(?=Z|[+-][0-9])"#, with: "", options: .regularExpression)
+        if withoutFraction != text, let date = formatter.date(from: withoutFraction) { return date }
         // Ancien format Pipedrive : « 2025-12-01 14:12:54 » (UTC)
         let normalized = text.replacingOccurrences(of: " ", with: "T") + "Z"
         return formatter.date(from: normalized)

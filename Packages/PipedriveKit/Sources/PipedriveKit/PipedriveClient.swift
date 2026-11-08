@@ -251,6 +251,14 @@ public struct PipedriveClient: Sendable {
         return MailHint(subject: latest.subject, pipedriveThreadID: threadID, gmailMessageID: threadGmailID ?? latest.gmailMessageID)
     }
 
+    /// E-mails synchronisés d'une affaire, les plus récents d'abord (devis envoyés par mail, signatures).
+    public func dealMails(dealID: Int, limit: Int = 50) async throws -> [DealMail] {
+        let response = try await send("GET", "/api/v1/deals/\(dealID)/mailMessages", query: [
+            URLQueryItem(name: "start", value: "0"), URLQueryItem(name: "limit", value: String(limit)),
+        ])
+        return (response["data"].arrayValue ?? []).compactMap(DealMail.init(json:))
+    }
+
     /// Message écrit par le client, ou par moi à destination du client (destinataire ou copie).
     static func isBetweenMeAndClient(_ json: JSONValue, clientEmails: [String], myEmail: String?) -> Bool {
         let data = json["data"].isNull ? json : json["data"]

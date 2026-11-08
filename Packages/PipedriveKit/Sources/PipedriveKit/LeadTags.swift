@@ -1,12 +1,14 @@
 import Foundation
 
 /// Étiquettes affichées sur une fiche (demande d'Yves du 08/11/2026) :
-/// - « Devis envoyé » : une activité terminée « Devis envoyé » (ou dont le texte dit qu'un devis a été envoyé)
-///   existe sur l'affaire, et l'affaire est toujours en cours (pas gagnée ni perdue) ;
+/// - « Devis envoyé » : une activité terminée « Devis envoyé » (ou dont le texte dit qu'un devis a été envoyé), ou un
+///   e-mail de l'agence au client avec un devis en pièce jointe, de moins de 6 mois, sur une affaire en cours et pas
+///   encore signée ;
 /// - « 1er call à faire » : aucun échange de vive voix connu avec le contact (appel décroché, « Call effectué »,
 ///   rendez-vous, enregistrement Leexi). Répondeurs, appels manqués, SMS et e-mails ne comptent pas.
 public struct LeadTags: Hashable, Sendable {
-    /// Devis envoyés sur l'affaire (activités terminées), le plus récent d'abord : détail au toucher de l'étiquette.
+    /// Devis envoyés sur l'affaire depuis moins de 6 mois (activités terminées et e-mails), le plus récent d'abord :
+    /// détail au toucher de l'étiquette.
     public let quotes: [QuoteSent]
     public let firstCallToDo: Bool
     /// Preuve de signature la plus récente (affaire gagnée, champ « Contrat signé le », note ou activité « … signé »).
@@ -32,6 +34,10 @@ public struct LeadTags: Hashable, Sendable {
     }
 
     public static let none = LeadTags(quotes: [], firstCallToDo: false)
+
+    /// Un devis de plus de 6 mois n'est plus « en attente » : signé (souvent noté seulement dans l'yntranet) ou abandonné
+    /// (retour d'Yves du 08/11/2026).
+    public static let pendingWindowDays = 180
 
     /// Jour (AAAA-MM-JJ, heure de Paris) du dernier « Devis envoyé », s'il y en a un.
     public var quoteSentDay: String? { quotes.first?.day }
@@ -63,20 +69,30 @@ public struct LeadTags: Hashable, Sendable {
     }
 }
 
-/// Un devis envoyé (activité terminée de l'affaire), pour la fenêtre de détail.
+/// Un devis envoyé (activité terminée ou e-mail de l'affaire), pour la fenêtre de détail.
 public struct QuoteSent: Hashable, Sendable, Identifiable {
+    public enum Source: String, Hashable, Sendable {
+        /// Activité terminée « Devis envoyé ».
+        case activity
+        /// E-mail de l'agence au client avec le devis en pièce jointe.
+        case mail
+    }
+
+    /// Identifiant de l'activité ou de l'e-mail.
     public let id: Int
-    /// Texte de l'activité (« Devis SEO envoyé »).
+    public let source: Source
+    /// Texte de l'activité (« Devis SEO envoyé ») ou objet de l'e-mail.
     public let subject: String
     /// Jour à l'heure de Paris (AAAA-MM-JJ).
     public let day: String
     /// Date affichée (« 3 novembre à 14:30 »).
     public let dateText: String
-    /// Note de l'activité en texte simple, s'il y en a une.
+    /// Note de l'activité en texte simple, ou pièce jointe de l'e-mail.
     public let note: String?
 
-    public init(id: Int, subject: String, day: String, dateText: String, note: String?) {
+    public init(id: Int, source: Source = .activity, subject: String, day: String, dateText: String, note: String?) {
         self.id = id
+        self.source = source
         self.subject = subject
         self.day = day
         self.dateText = dateText
@@ -109,6 +125,8 @@ public struct SignatureEvidence: Hashable, Sendable {
         case note
         /// Activité terminée dont le texte ou la note dit « signé ».
         case activity
+        /// E-mail de l'affaire : « À la suite de la signature du bon de commande », « Bon pour accord » du client…
+        case mail
     }
 
     public let source: Source
@@ -132,6 +150,7 @@ public struct SignatureEvidence: Hashable, Sendable {
         case .signedField: return "Champ « Contrat signé le »"
         case .note: return "Note de l'affaire"
         case .activity: return "Activité de l'affaire"
+        case .mail: return "E-mail de l'affaire"
         }
     }
 }
@@ -151,34 +170,59 @@ public enum LeadTagRules {
         return ["reunion", "rendez-vous", "rdv", "visio", "meeting"].contains { name.contains($0) }
     }
 
-    /// Devis envoyé : type « Devis envoyé », ou texte qui parle d'un devis envoyé (« devis SEO envoyé », « renvoyer le devis »).
+    /// Devis envoyé : type « Devis envoyé », ou texte au passé qui dit qu'un devis est parti (« devis TMA envoyé »,
+    /// « devis renvoyé »). « Envoyer les devis » est une tâche à faire, même cochée : ce n'est pas la preuve d'un envoi
+    /// (retour d'Yves du 08/11/2026).
     public static func isQuoteSent(_ activity: Activity, typeNames: [String: String]) -> Bool {
         guard activity.done else { return false }
         let name = typeNames[activity.type] ?? activity.type
         if Label.matches(name, "Devis envoyé") || activity.type.lowercased().hasPrefix("devis_envoy") { return true }
         let subject = Label.normalized(activity.subject)
-        return subject.contains("devis") && subject.range(of: #"\b(r?envoy|envoi)"#, options: .regularExpression) != nil
+        return subject.contains("devis") && subject.range(of: #"\br?envoye(?:e|s|es)?\b"#, options: .regularExpression) != nil
     }
 }
 
 extension LeadTagRules {
     static let signedRegex = try? NSRegularExpression(pattern: #"\bsign(?:é|ée|és|ées)\b"#, options: [.caseInsensitive])
+    static let innerNegationRegex = try? NSRegularExpression(pattern: #"\b(?:pas|non|jamais|ni|aucun|aucune)\b|\bn['’]"#,
+                                                             options: [.caseInsensitive])
     static let negationRegex = try? NSRegularExpression(pattern: #"\b(?:pas|non|jamais|plus|ni)\b[^.!?\n]{0,15}$"#,
                                                         options: [.caseInsensitive])
 
     /// Ligne qui dit qu'un devis / contrat est signé (« c'est signé pour SEO », « contrat signé »),
-    /// sans négation juste avant (« pas encore signé ») ; nil sinon. « signer », « va signer » ne comptent pas.
+    /// sans négation juste avant (« pas encore signé ») ni question (« c'est signé ça ? ») ; nil sinon.
+    /// « signer », « va signer » ne comptent pas.
     public static func signedExcerpt(in text: String) -> String? {
-        guard let signedRegex, let negationRegex else { return nil }
+        guard let signedRegex else { return nil }
+        return affirmativeExcerpt(of: signedRegex, in: text)
+    }
+
+    /// Phrase où `regex` trouve une affirmation : ni négation juste avant, ni point d'interrogation juste après.
+    static func affirmativeExcerpt(of regex: NSRegularExpression, in text: String) -> String? {
+        guard let negationRegex else { return nil }
         let ns = text as NSString
-        for match in signedRegex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+        for match in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
             let start = max(0, match.range.location - 25)
             let before = ns.substring(with: NSRange(location: start, length: match.range.location - start))
             if negationRegex.firstMatch(in: before, range: NSRange(location: 0, length: (before as NSString).length)) != nil {
                 continue
             }
+            // Négation au milieu de l'expression : « devis pas encore signé », « validons pas la proposition ».
+            let matched = ns.substring(with: match.range)
+            if innerNegationRegex?.firstMatch(in: matched, range: NSRange(location: 0, length: (matched as NSString).length)) != nil {
+                continue
+            }
+            let end = NSMaxRange(match.range)
+            let after = ns.substring(with: NSRange(location: end, length: min(20, ns.length - end)))
+            if let stop = after.first(where: { "?.!\n".contains($0) }), stop == "?" { continue }
             let lineRange = ns.lineRange(for: match.range)
-            let line = ns.substring(with: lineRange).trimmingCharacters(in: .whitespacesAndNewlines)
+            // Ligne longue (début d'e-mail) : à partir du début de la phrase.
+            var from = lineRange.location
+            let head = NSRange(location: lineRange.location, length: match.range.location - lineRange.location)
+            let stop = ns.rangeOfCharacter(from: CharacterSet(charactersIn: ".!?"), options: .backwards, range: head)
+            if NSMaxRange(lineRange) - from > 160, stop.location != NSNotFound { from = stop.location + 1 }
+            let line = ns.substring(with: NSRange(location: from, length: NSMaxRange(lineRange) - from))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             return line.count > 160 ? String(line.prefix(157)) + "…" : line
         }
         return nil
@@ -219,7 +263,7 @@ public enum TagFilter: String, CaseIterable, Sendable, Identifiable {
     }
 }
 
-/// Calcule les étiquettes d'une fiche à partir de Pipedrive (1 à 4 requêtes, faites quand la carte apparaît).
+/// Calcule les étiquettes d'une fiche à partir de Pipedrive (1 à 6 requêtes, faites quand la carte apparaît).
 public struct LeadTagsLoader: Sendable {
     let client: PipedriveClient
 
@@ -227,8 +271,10 @@ public struct LeadTagsLoader: Sendable {
         self.client = client
     }
 
+    /// `myEmail` : mon adresse, dont le domaine désigne l'agence (e-mails de devis et de signature) ; sans elle,
+    /// les e-mails de l'affaire ne sont pas lus.
     public func load(for item: ActivityItem, typeNames: [String: String], timeZone: TimeZone,
-                     now: Date = Date()) async throws -> LeadTags {
+                     now: Date = Date(), myEmail: String? = nil) async throws -> LeadTags {
         let dealID = item.activity.dealID
         let personID = item.person?.id ?? item.activity.personID
         guard dealID != nil || personID != nil else { return .none }
@@ -262,9 +308,16 @@ public struct LeadTagsLoader: Sendable {
             spoke = try await client.notes(filter: "person_id", id: personID, limit: 50).contains(where: \.isLeexi)
         }
 
-        // Devis : ceux de l'affaire ; sans affaire, ceux de la personne.
+        // E-mails de l'affaire (sans bloquer les étiquettes si la lecture échoue).
+        let ownDomain = myEmail.flatMap(DealMail.domain)
+        var mails: [DealMail] = []
+        if let dealID, ownDomain != nil {
+            mails = (try? await client.dealMails(dealID: dealID)) ?? []
+        }
+
+        // Devis : activités de l'affaire (sans affaire, de la personne), puis e-mails de l'agence avec un devis joint.
         let quoteSource = dealID != nil ? dealDone : personDone
-        let quotes = quoteSource
+        let activityQuotes = quoteSource
             .filter { LeadTagRules.isQuoteSent($0, typeNames: typeNames) }
             .compactMap { activity -> QuoteSent? in
                 guard let day = activity.localDay(timeZone: timeZone) else { return nil }
@@ -273,6 +326,24 @@ public struct LeadTagsLoader: Sendable {
                                  day: day, dateText: activity.displayDate(now: now),
                                  note: (note?.isEmpty ?? true) ? nil : note)
             }
+        var mailQuotes: [QuoteSent] = []
+        if let ownDomain {
+            for mail in mails {
+                guard let documents = MailRules.quoteDocuments(in: mail, ownDomain: ownDomain),
+                      let day = mail.day(timeZone: timeZone), let sentAt = mail.sentAt else { continue }
+                // Même devis que l'activité « Devis envoyé » du jour, ou renvoi du même fichier le même jour : une seule fois.
+                if activityQuotes.contains(where: { $0.day == day }) { continue }
+                if mailQuotes.contains(where: { $0.day == day && $0.note == "Pièce jointe : \(documents)" }) { continue }
+                let instant = ISO8601DateFormatter().string(from: sentAt)
+                mailQuotes.append(QuoteSent(id: mail.id, source: .mail, subject: mail.subject.isEmpty ? "E-mail" : mail.subject,
+                                            day: day, dateText: FrenchFormat.longDate(fromAPI: instant, now: now, timeZone: timeZone),
+                                            note: "Pièce jointe : \(documents)"))
+            }
+        }
+        let allQuotes = activityQuotes + mailQuotes
+        let today = FrenchFormat.apiDay(from: now, timeZone: timeZone)
+        let quotes = allQuotes
+            .filter { (LeadTags.daysBetween($0.day, today) ?? 0) <= LeadTags.pendingWindowDays }
             .sorted { $0.day != $1.day ? $0.day > $1.day : $0.id > $1.id }
 
         // Signature (seulement s'il y a un devis ou un champ « Contrat signé le ») : la preuve la plus récente.
@@ -282,7 +353,7 @@ public struct LeadTagsLoader: Sendable {
                                                dateText: FrenchFormat.longDate(fromAPI: signedDay, now: now, timeZone: timeZone),
                                                text: "Contrat signé le \(FrenchFormat.date(fromAPI: signedDay))"))
         }
-        if !quotes.isEmpty, let dealID {
+        if !allQuotes.isEmpty, let dealID {
             for activity in dealDone {
                 guard let day = activity.localDay(timeZone: timeZone), !LeadTagRules.isQuoteSent(activity, typeNames: typeNames)
                 else { continue }
@@ -307,6 +378,16 @@ public struct LeadTagsLoader: Sendable {
                 let day = note.date.map { FrenchFormat.apiDay(from: $0, timeZone: timeZone) } ?? String((note.addTime ?? "").prefix(10))
                 guard FrenchFormat.dayParts(day) != nil else { continue }
                 evidences.append(SignatureEvidence(source: .note, day: day, dateText: note.dateText(now: now), text: excerpt))
+            }
+            if let ownDomain {
+                for mail in mails {
+                    guard let excerpt = MailRules.signatureExcerpt(in: mail, ownDomain: ownDomain),
+                          let day = mail.day(timeZone: timeZone), let sentAt = mail.sentAt else { continue }
+                    let instant = ISO8601DateFormatter().string(from: sentAt)
+                    evidences.append(SignatureEvidence(source: .mail, day: day,
+                                                       dateText: FrenchFormat.longDate(fromAPI: instant, now: now, timeZone: timeZone),
+                                                       text: excerpt))
+                }
             }
         }
         let signature = evidences.max { $0.day < $1.day }

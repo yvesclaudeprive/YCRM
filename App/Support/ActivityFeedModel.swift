@@ -206,7 +206,7 @@ final class ActivityFeedModel {
         do {
             try await loadActivityTypes(session: session)
             let result = try await LeadTagsLoader(client: session.makeClient()).load(
-                for: item, typeNames: activityTypeNames, timeZone: parisTimeZone)
+                for: item, typeNames: activityTypeNames, timeZone: parisTimeZone, myEmail: session.myEmail)
             guard !Task.isCancelled else { return }
             store(result, for: item.id)
         } catch {
@@ -237,6 +237,7 @@ final class ActivityFeedModel {
         }
         try? await loadActivityTypes(session: session)
         let names = activityTypeNames
+        let myEmail = session.myEmail
         let ids = Set(pending.map(\.id))
         tagsInFlight.formUnion(ids)
         defer { tagsInFlight.subtract(ids) }
@@ -247,7 +248,7 @@ final class ActivityFeedModel {
                 guard let item = queue.popFirst() else { return }
                 group.addTask {
                     (item.id, try? await LeadTagsLoader(client: client).load(for: item, typeNames: names,
-                                                                            timeZone: parisTimeZone))
+                                                                            timeZone: parisTimeZone, myEmail: myEmail))
                 }
             }
             for _ in 0..<4 { enqueue() }

@@ -1,8 +1,8 @@
 import SwiftUI
 import PipedriveKit
 
-/// Détail de l'étiquette « Devis envoyé » (demande d'Yves du 08/11/2026) : tous les devis envoyés sur l'affaire,
-/// le plus récent d'abord, avec la date, l'ancienneté et la note de l'activité.
+/// Détail de l'étiquette « Devis envoyé » (demande d'Yves du 08/11/2026) : les devis envoyés sur l'affaire depuis
+/// moins de 6 mois (activités « Devis envoyé » et e-mails avec un devis joint), le plus récent d'abord.
 struct QuoteSheet: View {
     let item: ActivityItem
     let tags: LeadTags
@@ -27,13 +27,13 @@ struct QuoteSheet: View {
                         signatureCard(signature)
                     }
                     if tags.quotes.isEmpty {
-                        Text("Aucun devis envoyé enregistré sur cette affaire.")
+                        Text("Aucun devis envoyé depuis 6 mois sur cette affaire.")
                             .foregroundStyle(.secondary)
                     }
-                    ForEach(tags.quotes) { quote in
+                    ForEach(tags.quotes, id: \.self) { quote in
                         card(quote)
                     }
-                    Text("D'après les activités terminées « Devis envoyé » de l'affaire dans Pipedrive. « Signé » : affaire gagnée, champ « Contrat signé le », ou note / activité qui dit « signé » après le dernier devis.")
+                    Text("D'après les activités « Devis envoyé » et les e-mails de l'agence au client avec un devis joint (6 derniers mois). « Signé » : affaire gagnée, champ « Contrat signé le », lancement du projet, ou note / activité / e-mail qui dit « signé » (« À la suite de la signature du bon de commande », « Bon pour accord ») après le dernier devis.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .padding(.top, 4)
@@ -89,7 +89,7 @@ struct QuoteSheet: View {
     private func card(_ quote: QuoteSent) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Image(systemName: "doc.text.fill")
+                Image(systemName: quote.source == .mail ? "envelope.fill" : "doc.text.fill")
                 Text(quote.agoText(timeZone: parisTimeZone).map { "Envoyé \($0)" } ?? "Envoyé")
                     .fontWeight(.bold)
                 Spacer(minLength: 4)
