@@ -81,14 +81,23 @@ jobs:
           set -euo pipefail
           TGZ="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           # Téléchargements GitHub parfois en erreur 5xx : nouvelles tentatives.
-          curl -sSfL --retry 5 --retry-all-errors --retry-delay 5 -o "$RUNNER_TEMP/$TGZ" \
+          curl -sSfL --retry 8 --retry-all-errors --retry-delay 15 -o "$RUNNER_TEMP/$TGZ" \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${TGZ}"
           echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$TGZ" | sha256sum -c -
           tar -xzf "$RUNNER_TEMP/$TGZ" -C "$RUNNER_TEMP" gitleaks
       - name: Scanner (valeurs masquées)
         run: |
           "$RUNNER_TEMP/gitleaks" detect --source . --redact --no-banner --exit-code 1 --log-opts=HEAD
-      - name: Aucune donnée personnelle (e-mails, numéros, adresse Pipedrive, codes)
+
+  publication:
+    name: aucune donnée personnelle publiée
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: E-mails, numéros, adresse Pipedrive, clés, codes de champs
         run: ./scripts/verifier-publication.sh
 
   workflows:
