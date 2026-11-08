@@ -101,8 +101,24 @@ public struct LeadTags: Hashable, Sendable {
     }
 
     static func lines(prefix: String, _ quotes: [QuoteSent], now: Date, timeZone: TimeZone) -> [TagLine] {
-        quotes.map { TagLine(prefix: prefix, title: $0.subject, age: $0.shortAgoText(now: now, timeZone: timeZone)) }
+        quotes.map { TagLine(prefix: prefix, title: shortTitle($0.subject), age: $0.shortAgoText(now: now, timeZone: timeZone)) }
     }
+
+    /// Noms courts dans les étiquettes, pour gagner de la place (demande d'Yves du 08/11/2026) :
+    /// « Google Analytics (4) » → « GA4 », « (Google) Search Console » → « GSC ».
+    public static func shortTitle(_ title: String) -> String {
+        var text = title
+        for (pattern, short) in shortNames {
+            text = text.replacingOccurrences(of: pattern, with: short, options: [.regularExpression, .caseInsensitive])
+        }
+        return text
+    }
+
+    static let shortNames: [(String, String)] = [
+        (#"\bgoogle[\s-]+analytics(\s*4)?\b"#, "GA4"),
+        (#"\bga\s+4\b"#, "GA4"),
+        (#"\b(google[\s-]+)?se(a|ra)rch[\s-]+console\b"#, "GSC"),
+    ]
 
     /// Texte de l'étiquette « En signature » (une ligne par devis).
     public func signingLabel(now: Date = Date(), timeZone: TimeZone) -> String? {

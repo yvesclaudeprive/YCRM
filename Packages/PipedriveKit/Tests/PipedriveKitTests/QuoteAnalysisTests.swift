@@ -62,6 +62,17 @@ final class QuoteAnalysisTests: XCTestCase {
         XCTAssertFalse(TagFilter.quoteSent.matches(tags))
     }
 
+    func testShortNamesInTags() throws {
+        XCTAssertEqual(LeadTags.shortTitle("Google Analytics 4 + Google Search Console"), "GA4 + GSC")
+        XCTAssertEqual(LeadTags.shortTitle("google analytics, search console et Google Ads"), "GA4, GSC et Google Ads")
+        XCTAssertEqual(LeadTags.shortTitle("Serach Console"), "GSC")
+        XCTAssertEqual(LeadTags.shortTitle("GA 4"), "GA4")
+        XCTAssertEqual(LeadTags.shortTitle("Adobe Analytics"), "Adobe Analytics")
+        let text = "ACCÈS EN ATTENTE\n• Google Analytics + Search Console | 09/07/2026 | demandés\nAnalyse Claude du 08/11/2026 à 16:00"
+        let tags = LeadTags(analysis: try XCTUnwrap(QuoteAnalysis(text: text)), firstCallToDo: false, now: Self.now, timeZone: paris)
+        XCTAssertEqual(tags.accessLines(now: Self.now, timeZone: paris).map(\.text), ["Accès - GA4 + GSC - 122j"])
+    }
+
     func testFieldName() {
         XCTAssertTrue(ActivityFeedLoader.isQuoteAnalysisField("Devis en attente (claude)"))
         XCTAssertTrue(ActivityFeedLoader.isQuoteAnalysisField("Devis en attente"))
