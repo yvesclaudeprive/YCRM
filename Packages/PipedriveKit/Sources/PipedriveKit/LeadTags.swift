@@ -117,7 +117,7 @@ public struct LeadTags: Hashable, Sendable {
     static let shortNames: [(String, String)] = [
         (#"\bgoogle[\s-]+analytics(\s*4)?\b"#, "GA4"),
         (#"\bga\s+4\b"#, "GA4"),
-        (#"\b(google[\s-]+)?se(a|ra)rch[\s-]+console\b"#, "GSC"),
+        (#"\b(google[\s-]+)?se(ar|ra)ch[\s-]+console\b"#, "GSC"),
     ]
 
     /// Texte de l'étiquette « En signature » (une ligne par devis).
