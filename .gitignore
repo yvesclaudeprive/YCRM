@@ -1,0 +1,24 @@
+# Xcode / XcodeGen (projet régénéré à partir de project.yml)
+*.xcodeproj/
+*.xcworkspace/
+Config/Info.plist
+DerivedData/
+build/
+xcuserdata/
+*.xcuserstate
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Secrets : jamais dans le dépôt
+*.p8
+*.p12
+*.mobileprovision
+*.cer
+.env*
+*token*.txt
+*.key
+
+.DS_Store

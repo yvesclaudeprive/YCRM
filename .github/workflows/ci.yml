@@ -1,0 +1,102 @@
+name: ci
+
+# Dépôt privé : les minutes Mac sont décomptées. Un seul déclenchement par push
+# (le statut apparaît aussi sur les PR), rien pour un changement de doc seule.
+on:
+  push:
+    branches: ["**"]
+    paths-ignore:
+      - "**.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kit-linux:
+    name: tests PipedriveKit (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container: swift:6.0-noble
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Tests
+        run: swift test --package-path Packages/PipedriveKit
+
+  ios:
+    name: compilation app iOS (simulateur)
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Choisir Xcode 26 (exigé par Apple pour l'envoi)
+        run: |
+          set -euo pipefail
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "$XCODE" ]; then
+            sudo xcode-select -s "$XCODE/Contents/Developer"
+          fi
+          VERSION=$(xcodebuild -version | head -1)
+          echo "$VERSION"
+          case "$VERSION" in
+            "Xcode 26"*|"Xcode 27"*) ;;
+            *) echo "::error::Xcode 26 ou plus récent introuvable sur ce runner ($VERSION)."; ls -d /Applications/Xcode*.app; exit 1 ;;
+          esac
+      - name: Outils
+        run: brew install xcodegen
+      - name: Tests PipedriveKit (macOS)
+        run: swift test --package-path Packages/PipedriveKit
+      - name: Générer le projet Xcode
+        run: xcodegen generate
+      - name: Compiler l'app
+        run: |
+          set -o pipefail
+          xcodebuild -project YCRM.xcodeproj -scheme YCRM \
+            -destination 'generic/platform=iOS Simulator' -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO -quiet build
+
+  secrets:
+    name: scan de secrets (gitleaks)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GITLEAKS_VERSION: 8.18.4
+      # sha256 officiel de gitleaks_8.18.4_linux_x64.tar.gz (fichier checksums de la release)
+      GITLEAKS_SHA256: ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Installer gitleaks (binaire vérifié)
+        run: |
+          set -euo pipefail
+          TGZ="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$TGZ" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${TGZ}"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$TGZ" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$TGZ" -C "$RUNNER_TEMP" gitleaks
+      - name: Scanner (valeurs masquées)
+        run: |
+          "$RUNNER_TEMP/gitleaks" detect --source . --redact --no-banner --exit-code 1 --log-opts=HEAD
+
+  workflows:
+    name: vérification des workflows (actionlint)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: actionlint
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet "actionlint-py==1.7.12.25"
+          "$RUNNER_TEMP/venv/bin/actionlint" -shellcheck= .github/workflows/*.yml

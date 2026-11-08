@@ -1,0 +1,120 @@
+name: testflight
+
+# Envoi d'une version de l'app YCRM sur TestFlight (lancement manuel : Actions › testflight › Run workflow).
+# Signature gérée par Apple (cloud signing) via la clé API App Store Connect :
+# aucun certificat ni profil à stocker. Secrets requis (Settings › Secrets and variables › Actions) :
+#   APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_PRIVATE_KEY (contenu du fichier .p8).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    name: envoi TestFlight
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Numéro de build = numéro du run + 100 : l'ancien dépôt privé est allé jusqu'à 29,
+      # et Apple refuse un numéro déjà utilisé ou plus petit.
+      - name: Numéro de build
+        run: echo "BUILD_NUMBER=$((GITHUB_RUN_NUMBER + 100))" >> "$GITHUB_ENV"
+
+      - name: Vérifier les secrets (sans les afficher)
+        env:
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          missing=""
+          for name in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Secrets GitHub manquants :$missing"
+            exit 1
+          fi
+
+      - name: Écrire la clé API dans un fichier temporaire
+        env:
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s\n' "$ASC_PRIVATE_KEY" | tr -d '\r' > "$KEY_PATH"
+          if ! grep -q "BEGIN PRIVATE KEY" "$KEY_PATH"; then
+            echo "::error::ASC_PRIVATE_KEY ne ressemble pas au contenu d'un fichier .p8 (BEGIN PRIVATE KEY absent)."
+            exit 1
+          fi
+          echo "ASC_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+          echo "ARCHIVE_PATH=$RUNNER_TEMP/YCRM.xcarchive" >> "$GITHUB_ENV"
+
+      - name: Choisir Xcode 26 (exigé par Apple pour l'envoi)
+        run: |
+          set -euo pipefail
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "$XCODE" ]; then
+            sudo xcode-select -s "$XCODE/Contents/Developer"
+          fi
+          VERSION=$(xcodebuild -version | head -1)
+          echo "$VERSION"
+          case "$VERSION" in
+            "Xcode 26"*|"Xcode 27"*) ;;
+            *) echo "::error::Xcode 26 ou plus récent introuvable sur ce runner ($VERSION)."; ls -d /Applications/Xcode*.app; exit 1 ;;
+          esac
+      - name: Outils
+        run: brew install xcodegen
+
+      - name: Générer le projet Xcode
+        run: xcodegen generate
+
+      - name: Archiver (Release, sans signature)
+        run: |
+          set -o pipefail
+          xcodebuild archive -project YCRM.xcodeproj -scheme YCRM \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" -quiet
+
+      - name: Signer et envoyer à App Store Connect
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>testFlightInternalTestingOnly</key><true/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$ARCHIVE_PATH" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          echo "YCRM 1.0 (build $BUILD_NUMBER) envoyée. Traitement Apple : 10 à 30 min avant d'apparaître dans TestFlight." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Supprimer la clé temporaire
+        if: always()
+        run: rm -f "$RUNNER_TEMP"/AuthKey_*.p8 "$RUNNER_TEMP/ExportOptions.plist"

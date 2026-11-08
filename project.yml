@@ -1,0 +1,81 @@
+# Projet Xcode généré par XcodeGen (`xcodegen generate`) : le .xcodeproj n'est pas versionné.
+name: YCRM
+options:
+  bundleIdPrefix: com.yateo
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: fr
+  createIntermediateGroups: true
+packages:
+  PipedriveKit:
+    path: Packages/PipedriveKit
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  YCRM:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    dependencies:
+      - package: PipedriveKit
+    info:
+      path: Config/Info.plist
+      properties:
+        CFBundleDisplayName: YCRM
+        # Numéros pris dans les réglages de build (le workflow testflight fixe le build = numéro du run).
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: fr
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        ITSAppUsesNonExemptEncryption: false
+        # Apps dont YCRM vérifie la présence (WhatsApp grisé s'il manque, détection du lien OnOff).
+        LSApplicationQueriesSchemes:
+          - whatsapp
+          - aircall
+          - shortcuts
+          - onoff
+          - onoffapp
+          - onoff-app
+          - onoffnumbers
+          - onoff-numbers
+          - onofftelecom
+          - onoff-telecom
+          - onoffcall
+          - onoffcalls
+          - onoffbusiness
+          - onoff-business
+          - ootelecom
+          - number
+          - numbers
+          - numberapp
+          - number-app
+          - onoffnumber
+          - onoff-number
+          - onoffnumbersapp
+          - com.onoffapp.onoff
+          - com.onoffapp.numbers
+          - com.onoffapp
+          - com.onoff.app
+          - com.onoff
+          - onoffmobile
+          - onoff-mobile
+          - onoffapp-ios
+          - onoffios
+          - com.onoffapp.app
+          - com.onoffapp.app.ios
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yateo.ycrm
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_STYLE: Automatic
+    scheme: {}

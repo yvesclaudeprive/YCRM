@@ -1,0 +1,75 @@
+# CLAUDE.md — YCRM (dépôt public yvesclaudeprive/YCRM)
+
+Instructions pour toute session Claude Code sur ce dépôt. **Le code fait foi.**
+
+## 1. Le projet
+
+App iPhone **YCRM** (nom choisi par Yves le 07/11/2026), **personnelle d'Yves** (fondateur de Yateo) : la **liste de ses activités Pipedrive** (« alertes ») jusqu'à aujourd'hui, **triées par le champ d'affaire « Score priorisation »**, avec des boutons d'action par activité (cahier des charges d'Yves du 07/11/2026, remplace la 1re version « recherche/modification d'entreprises »).
+- Bloc : société, personne, texte de l'activité, score, date (JJ/MM/AAAA à HH:MM, heure de Paris). Clic = fiche Pipedrive (affaire, sinon personne, sinon société) dans l'app Pipedrive.
+- **Design** (demande d'Yves du 07/11/2026, « plus moderne ») : chaque activité est une **carte** arrondie (coins 22, ombre douce) sur fond `AppBackground`, cartes alternées `CardPrimary` / `CardAlternate` ; tuiles de boutons arrondies (dégradé léger, effet d'appui) ; barre du haut sur fond flouté : logo, recherche en capsule, boutons ronds Filtres (point rouge si filtre actif) et Réglages. **Rouge Yateo** unique (`YateoRed` = #C30009, lettres « CRM » du logo) pour la société, les dates en retard et les scores ≥ 60. Couleurs en catalogue avec variante sombre.
+- Plus de titres de lignes. Boutons façon app Contacts : pastille ronde + libellé dessous, chaque ligne dans un conteneur arrondi très léger. **Ordre et couleurs** (demande d'Yves du 07/11/2026) : 1. Appels/envois (orange, pastilles pleines) · 2. Mails (orange foncé, pleines) · 3. Alertes Pipedrive (bleu, teintées) · 4. Historique (bleu clair). Logos réels (masques teintés comme les autres icônes, `Assets.xcassets`) : WhatsApp, OnOff (« Appel Onoff »), Leexi (« Voir les Leexi », cartes Leexi). Petit logo Pipedrive **discret** (« p » dans la couleur de l'icône) sur les alertes et « Dernières notes et activités ».
+- Contenu des lignes :
+  1. **Alertes pipedrive** (activité **terminée** datée du clic, texte = nom du type, « Annuler » 6 s, puis **ouverture de la fiche Pipedrive**) : **Debrief call** (« Call effectué » + note modèle « Je l'ai eu au téléphone et : • x » à compléter dans Pipedrive ; pas de lien Pipedrive vers une activité précise, on ouvre l'affaire) · Rép. tel (= Répondeur sans message) · Répondeur ON/OFF · WhatsApp (type « Sms envoyé », texte « WhatsApp envoyé » : pas de type WhatsApp dans le Pipedrive d'Yves) · Msg laissé aux collègues · Sms envoyé.
+  2. **Contacter** : Appel tel. · Appel Onoff · Appel Aircall · Envoi WhatsApp · Envoi SMS ; choix du numéro s'il y en a plusieurs. WhatsApp grisé si l'app n'est pas installée ou sans mobile ; dans le choix, les fixes sont grisés.
+  3. **E-mails** : Nouveau mail (brouillon au client) · Répondre dernier mail (fil Superhuman du **plus récent** e-mail écrit par le client, ou par moi au client — jamais celui d'un collègue) · Auto mail (brouillon à Yves : sujet « [CLIENT EN MAJUSCULES] texte », corps = lien Pipedrive).
+- Textes d'activité (carte et historique) : mots clés en **gras orange** (`KeywordHighlight`, demandes d'Yves du 07/11/2026) : « signer » sous toutes ses formes (resigner, re-signature, contresigné, cosigner, e-signature, signataire, conjugaisons) ; « devis », « contrat(s) », contractuel, avenant, bon de commande, propale, proposition commerciale ; « accès » (acces, accés, accéder) ; **plus les mots du métier qui suivent** (« devis audit sécu », « devis SEO et SEA », « signature GEO », « accès au compte Google Ads », « devis de montée de version », « devis refonte ou montée de version », « devis SEO à la perf », « accès GA + G ADS + FB »), sans passer à la ligne suivante. Liste des mots du métier (`trades`) construite à partir des vraies activités d'Yves (abréviations CRO, TMA, BL, GADS, FB, SS, perf, diag, beug…) ; mot manquant signalé par Yves = l'ajouter à `trades`.
+- **Étiquettes** (demande d'Yves du 08/11/2026, `LeadTags`) au-dessus du texte de l'activité, calculées quand la carte apparaît (activités terminées de l'affaire puis de la personne, `done=true`, puis notes Leexi si besoin) et recalculées après une alerte enregistrée ou annulée :
+  - **« Devis envoyé · il y a N j »** (violet) : activité terminée de type « Devis envoyé » (type existant dans le Pipedrive d'Yves) ou dont le texte dit qu'un devis a été envoyé / renvoyé ; la plus récente de l'affaire.
+  - **« 1er call à faire »** (rose) : aucun échange de vive voix connu avec le contact : ni appel Aircall décroché (`…_answered…`), ni « Call effectué », ni appel / rendez-vous / agenda, ni enregistrement Leexi. Répondeurs, appels manqués, SMS, e-mails ne comptent pas.
+  - Aucune étiquette si l'affaire est gagnée ou perdue. Rien n'est stocké : tout est relu dans Pipedrive.
+- Société (en rouge, ↗ rouge) et personne (en gris, ↗ gris) cliquables : fiche Pipedrive de la société / de la personne ; le reste du bloc ouvre l'affaire. Pas de ligne de résumé en haut de liste. Fonds de carte alternés.
+- Score coloré par tranches de 20 : bleu < 20, sarcelle < 40, orange < 60, **rouge ≥ 60** (scores réels : 0 à 75 au 07/11/2026). Date (même ligne que la personne) : rouge (même rouge que la société) en retard, orange aujourd'hui, vert à venir.
+- 4 lignes de boutons (ordre et couleurs : voir plus haut) ; tous les boutons font la même hauteur. Bouton grisé touché = fenêtre qui explique pourquoi (ex. WhatsApp absent, que des fixes). Ligne dont **aucun** bouton n'est utilisable (ex. contact sans numéro) : **fond de la ligne gris** en plus des boutons grisés (demande d'Yves du 07/11/2026) ; la ligne E-mails ne l'est jamais (« Auto mail » toujours possible). Toutes les fenêtres ont un fond opaque (`presentationBackground(.background)`, sinon iOS 26 les rend transparentes). Les cartes sont séparées par un espace (plus de trait).
+- Filtres (un seul écran) : **Date** (jusqu'à aujourd'hui par défaut, aujourd'hui, en retard, à venir, +7 j, +30 j, toutes, personnalisée) et **Utilisateurs** (moi par défaut, autres au choix ; `owner_id` interrogé par utilisateur puis fusionné).
+- Deux boutons côte à côte par bloc, qui ouvrent une **fenêtre** avec tout le contenu (cartes colorées par type, texte complet) : « Dernières notes et activités » (notes v1 `/notes` hors Leexi + activités avec une note, v2 `/activities?deal_id=…`) et « Voir les Leexi » (notes Leexi : lien `app.leexi.ai/…/calls/…` en tête, titre, résumé après « Résumé de l'appel »). **Uniquement les éléments de l'utilisateur à qui l'activité est attribuée** (notes/activités dont il est l'auteur/le propriétaire, Leexi où figure son adresse), jusqu'à 100 éléments chacun. Journaux automatiques Aircall (appels, répondeurs) en carte courte de 2 lignes (titre en français + durée) ; SMS / WhatsApp Aircall : seulement « SMS envoyé/reçu · expéditeur → destinataire » (numéro remplacé par le nom du contact) + le texte ; libellés réels Aircall « SMS send to / Send by / SMS sent » et « SMS send by / SMS received » ; vrais commentaires en texte plus gros (titre de la même taille que le texte). Dans les fenêtres, textes longs pliés à 3 lignes : toucher la carte plie / déplie, bouton « Tout déplier ». HTML → texte : retours à la ligne, paragraphes, listes à puces imbriquées (retrait, • ◦ ▪) et numérotées.
+- Barre du haut : logo YCRM (`docs/logo-ycrm.svg`, rendu en PNG dans `Assets.xcassets/Logo`), recherche, filtre de dates (défaut : jusqu'à aujourd'hui), réglages. Icône = le Y du logo. Couleur d'accent rouge (`AccentColor`). Tirer vers le bas = recharger ; pages de 30 au défilement.
+- **Pour Yves seul** (décision du 07/11/2026) : un seul jeton API personnel, distribution par **TestFlight**.
+- L'app parle à l'**API REST Pipedrive** avec son propre accès. **Jamais via le MCP / connecteur Pipedrive** (le connecteur sert seulement à Claude pour explorer, en lecture).
+
+## 2. Carte du dépôt
+
+| Chemin | Rôle |
+| --- | --- |
+| `Packages/PipedriveKit/` | Logique sans interface (client API, activités, `ActivityFeedLoader`, téléphones, liens vers les apps, formats FR) + tests XCTest. Compile sur Linux. |
+| `App/` | SwiftUI iOS 17 : `YCRMApp`, `Support/` (session + réglages, trousseau, `ActivityFeedModel`), `Views/` (`ActivityListView`, `ActivityRow`, `FilterView`, `SettingsView`). |
+| `project.yml` | XcodeGen → `YCRM.xcodeproj` (cible et schéma `YCRM`) (non versionné, comme `Config/Info.plist`). |
+| `.github/workflows/ci.yml` | Tests PipedriveKit (Linux + macOS), compilation simulateur (macos-26, Xcode 26), gitleaks. Déclenché à chaque push (sauf doc seule). |
+| `.github/workflows/testflight.yml` | Envoi TestFlight, **lancement manuel** : archive sans signature, puis signature par Apple (cloud signing) et envoi via la clé API App Store Connect. Build = numéro du run **+ 100** (l'ancien dépôt privé est allé jusqu'au build 29). |
+| `docs/TESTFLIGHT.md` | Étapes à faire par Yves (consoles Apple + secrets GitHub) et retour arrière. |
+
+## 3. Pas de Mac : tout passe par la CI
+
+- Le conteneur cloud n'a **pas** de compilateur Swift (et `download.swift.org` est bloqué). On écrit le code, on pousse, et la CI GitHub (macOS) compile et teste.
+- Vérifier chaque push : Actions › `ci` doit être vert (lire les logs de job en cas d'échec).
+- **Xcode 26 minimum** (iOS 26 SDK) : Apple refuse tout envoi compilé avec un SDK plus ancien (constaté le 07/11/2026). Runners `macos-26` + étape « Choisir Xcode 26 ».
+- Dépôt **public** `yvesclaudeprive/YCRM`, créé le 08/11/2026 (décision d'Yves : le quota gratuit de minutes Mac du dépôt privé `pipedrive-evolve` était épuisé ; compilation gratuite en public). Repart d'une seule version propre, sans l'historique du dépôt privé (qui reste privé, en archive). Les secrets Apple restent chiffrés dans GitHub, le jeton Pipedrive n'existe que dans le trousseau de l'iPhone.
+- TestFlight : compte Apple Developer d'Yves (payé le 07/11/2026) + 4 secrets GitHub déposés par Yves (`APPLE_TEAM_ID`, `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY`), jamais dans le chat. Procédure : `docs/TESTFLIGHT.md`. Bundle ID : `com.yateo.ycrm` · nom affiché : `YCRM` · trousseau : service `com.yateo.ycrm`.
+
+## 4. API Pipedrive utilisée
+
+- Auth : en-tête `x-api-token` (jamais `?api_token=` dans l'URL). Base : `https://<domaine>.pipedrive.com`.
+- `GET /api/v1/users/me` : vérifie le jeton, donne l'id d'Yves (filtre `owner_id`) et son e-mail.
+- `GET /api/v2/activities?owner_id=…&done=false&sort_by=due_date` (curseur ; ~400 activités ouvertes, 1 page de 500). `due_date`/`due_time` sont en **UTC** : jour et heure convertis à Paris pour le filtre et l'affichage.
+- `GET /api/v2/dealFields` → code du champ **« Score priorisation »** retrouvé **par son nom** (jamais de code en dur) ; puis `GET /api/v2/deals?ids=…&custom_fields=<code>`, `/api/v2/persons?ids=…`, `/api/v2/organizations?ids=…` par lots de 100.
+- `GET /api/v1/activityTypes` → type par nom (« Répondeur ON/OFF », « Répondeur sans message ») ; `POST /api/v2/activities` (`done: true`, date/heure UTC, `participants` pour la personne) ; `DELETE /api/v2/activities/{id}` pour « Annuler ».
+- E-mails synchronisés : `GET /api/v1/persons/{id}/mailMessages?limit=1` (le plus récent d'abord) puis `GET /api/v1/mailbox/mailThreads/{id}/mailMessages` ; l'id Gmail du fil = id du 1er message, lu dans `s3_bucket_path` (`…/<id>/body`).
+- Liens : `tel:`, `aircall://call?to=+33…` (documenté par Aircall), `https://wa.me/33…`, `mailto:` (ouvre Superhuman si c'est l'app de messagerie par défaut), **OnOff** (app « Number ») : aucun lien d'appel documenté ; réglage « Lien direct » (modèle, repli = numéro copié + ouverture de Number via un schéma détecté ou les liens universels `onoff.app.link` / `onoff.app`, `universalLinksOnly`) ou « Raccourci iPhone » (`shortcuts://run-shortcut?name=…&input=text&text=+33…`) ; Réglages affiche les schémas OnOff détectés (liste dans `project.yml` › `LSApplicationQueriesSchemes`), pour **Superhuman** (`https://mail.superhuman.com/{compte}/thread/{fil}`, à valider), `sms:+33…`. WhatsApp : impossible de vérifier un compte actif depuis une app ; bouton affiché pour les mobiles (06/07, étranger).
+
+## 5. Règles non négociables
+
+- **Secrets** : aucun jeton, clé ou mot de passe dans le code, le dépôt, un commit, une PR, un log ou le chat. Le jeton de l'app est saisi par Yves dans l'app → **trousseau iOS** (`WhenUnlockedThisDeviceOnly`). Pour les tests de Claude : formulaire sécurisé (`request_credential`), jamais une valeur collée.
+- **Dépôt public** : **aucune donnée client réelle** (noms d'entreprises, personnes, numéros, montants, codes de champs réels, captures) ni **adresse personnelle** (e-mail d'Yves, sous-domaine Pipedrive) dans le code, les tests, les commits ou les docs. Le sous-domaine est saisi dans l'app, l'e-mail est lu dans Pipedrive (`users/me`). Données fictives uniquement.
+- **Pipedrive** : tests de Claude en **lecture seule**. Ne jamais créer/modifier de vraie donnée sans l'accord explicite d'Yves. L'app n'écrit que sur un clic d'Yves (activités « Répondeur »), annulable.
+- **E-mails** : l'app n'envoie **jamais** de mail elle-même : elle ouvre des brouillons (Yves appuie sur Envoyer).
+- **Formats** : dans l'app, dates en toutes lettres (demande d'Yves du 07/11/2026) : « 2 novembre à 14:30 », année seulement si différente de l'année en cours (« 12 décembre 2025 ») ; heure de Paris, omise si 00:00. Ailleurs (doc, commits) : `JJ/MM/AAAA`. Montants « 7 356,00 € ».
+- Pas de dépendance externe sans raison forte (Foundation + SwiftUI suffisent).
+
+## 6. Workflow
+
+1. Coder sur la branche de travail désignée, tests PipedriveKit à jour (données fictives).
+2. Pousser → CI verte (Linux + macOS + gitleaks).
+3. Merge : quand c'est vert et relu, demander « go ? » à Yves ; merger seulement après son « go ».
+
+## 7. Parler à Yves
+
+En **français**, **court** (3 à 5 lignes) : ✅/❌ statut → résultat → ce qui change pour lui → action attendue. Pas de détail technique sauf s'il le demande.
