@@ -150,12 +150,18 @@ public enum AircallLog {
         return contact.name
     }
 
-    /// Durée lue dans le journal (« 00:02:15 ») → « 2 min 15 s ».
-    public static func duration(in text: String) -> String? {
+    /// Durée lue dans le journal (« 00:02:15 »), en secondes.
+    public static func seconds(in text: String) -> Int? {
         guard let range = text.range(of: "\\b\\d{2}:\\d{2}:\\d{2}\\b", options: .regularExpression) else { return nil }
         let parts = text[range].split(separator: ":").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
-        let (hours, minutes, seconds) = (parts[0], parts[1], parts[2])
+        return parts[0] * 3600 + parts[1] * 60 + parts[2]
+    }
+
+    /// Durée lue dans le journal (« 00:02:15 ») → « 2 min 15 s ».
+    public static func duration(in text: String) -> String? {
+        guard let total = Self.seconds(in: text) else { return nil }
+        let (hours, minutes, seconds) = (total / 3600, total % 3600 / 60, total % 60)
         if hours > 0 { return "\(hours) h \(String(format: "%02ld", minutes))" }
         if minutes > 0 { return seconds > 0 ? "\(minutes) min \(seconds) s" : "\(minutes) min" }
         return "\(seconds) s"

@@ -13,9 +13,22 @@ final class LeadTagsTests: XCTestCase {
         "task": "Tâche",
     ]
 
-    func done(_ type: String, _ subject: String = "", day: String = "2026-11-03") -> Activity {
+    func done(_ type: String, _ subject: String = "", day: String = "2026-11-03", note: String? = nil) -> Activity {
         Activity(id: 1, subject: subject, type: type, dueDate: day, dueTime: nil, dealID: 100, personID: 200, orgID: nil,
-                 done: true)
+                 done: true, note: note)
+    }
+
+    /// Aircall dit « décroché » quand la messagerie répond : moins d'une minute, ce n'est pas un échange.
+    func testShortAnsweredCallIsVoicemail() {
+        let short = done("aircall_outbound_answered_", note: "Outbound answered call<br>Duration of call: 00:00:21")
+        let real = done("aircall_outbound_answered_", note: "Outbound answered call<br>Duration of call: 00:04:12")
+        let minute = done("aircall_inbound_answered_c", note: "Duration of call: 00:01:00")
+        XCTAssertFalse(LeadTagRules.isConversation(short, typeNames: names))
+        XCTAssertTrue(LeadTagRules.isConversation(real, typeNames: names))
+        XCTAssertTrue(LeadTagRules.isConversation(minute, typeNames: [:]))
+        XCTAssertEqual(AircallLog.seconds(in: "Duration of call: 00:04:12"), 252)
+        XCTAssertEqual(AircallLog.duration(in: "Duration of call: 01:05:00"), "1 h 05")
+        XCTAssertEqual(AircallLog.duration(in: "Duration of call: 00:02:15"), "2 min 15 s")
     }
 
     func testConversationRules() {

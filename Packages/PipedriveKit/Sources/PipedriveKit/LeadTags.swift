@@ -244,14 +244,23 @@ public struct SignatureEvidence: Hashable, Sendable {
 
 /// Règles de lecture des activités Pipedrive pour les étiquettes.
 public enum LeadTagRules {
-    /// Échange de vive voix : appel Aircall décroché, « Call effectué », appel ou rendez-vous Pipedrive, événement d'agenda.
+    /// Durée minimale d'un appel Aircall décroché pour compter comme un vrai échange (« 1er call » fait).
+    public static let minimumCallSeconds = 60
+
+    /// Échange de vive voix : appel Aircall décroché d'au moins une minute, « Call effectué », appel ou rendez-vous
+    /// Pipedrive, événement d'agenda.
     public static func isConversation(_ activity: Activity, typeNames: [String: String]) -> Bool {
         guard activity.done else { return false }
         let key = activity.type.lowercased()
         let name = Label.normalized(typeNames[activity.type] ?? activity.type)
         let notReached = ["unanswer", "missed", "voicemail", "repondeur", "rpondeur", "sms", "msg"]
         if notReached.contains(where: { key.contains($0) || name.contains($0) }) { return false }
-        if key.contains("_answered") || name.contains("answered") { return true }
+        if key.contains("_answered") || name.contains("answered") {
+            // Aircall dit « décroché » dès que la messagerie répond : un appel de 21 s, c'est le répondeur, pas un
+            // échange (retour d'Yves du 08/11/2026). Durée inconnue : on garde l'appel.
+            guard let seconds = AircallLog.seconds(in: activity.note ?? "") else { return true }
+            return seconds >= minimumCallSeconds
+        }
         if ["call", "meeting", "google_agenda"].contains(key) { return true }
         if Label.matches(name, DebriefTemplate.typeName) || key.hasPrefix("call_effectu") { return true }
         return ["reunion", "rendez-vous", "rdv", "visio", "meeting"].contains { name.contains($0) }
