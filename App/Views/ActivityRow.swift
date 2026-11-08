@@ -46,7 +46,7 @@ struct ActivityRow: View {
                 buttonRow(.contact, unavailable: phoneReason != nil && whatsappReason != nil) {
                     chip("Appel\ntel.", icon: "phone.fill", action: .phone, row: .contact, disabledReason: phoneReason)
                     chip("Appel\nOnoff", icon: "asset:OnOff", action: .onoff, row: .contact, disabledReason: phoneReason)
-                    chip("Appel\nAircall", icon: "headphones", action: .aircall, row: .contact, disabledReason: phoneReason)
+                    chip("Appel\nAircall", icon: "asset:Aircall", action: .aircall, row: .contact, disabledReason: phoneReason)
                     chip("Envoi\nWhatsApp", icon: "asset:WhatsApp", action: .whatsapp, row: .contact,
                          disabledReason: whatsappReason)
                     chip("Envoi\nSMS", icon: "message.fill", action: .sms, row: .contact, disabledReason: phoneReason)
@@ -158,7 +158,7 @@ struct ActivityRow: View {
             Button {
                 perform(.showQuotes)
             } label: {
-                tagCapsule(Self.attributed(signing), icon: "signature", color: .signingOrange)
+                linesCapsule(signing, icon: "signature", color: .signingOrange)
             }
             .buttonStyle(PressableStyle())
             .accessibilityHint("Voir les devis en signature")
@@ -168,7 +168,7 @@ struct ActivityRow: View {
             Button {
                 perform(.showQuotes)
             } label: {
-                tagCapsule(Self.attributed(quotes), icon: "doc.text.fill", color: .yateoRed)
+                linesCapsule(quotes, icon: "doc.text.fill", color: .yateoRed)
             }
             .buttonStyle(PressableStyle())
             .accessibilityHint("Voir le détail des devis envoyés")
@@ -178,19 +178,35 @@ struct ActivityRow: View {
         }
     }
 
-    /// « Devis - **Refonte du site** - 206j », une ligne par devis, chevron « › » à la fin.
-    static func attributed(_ lines: [LeadTags.TagLine]) -> AttributedString {
-        var result = AttributedString()
-        for (index, line) in lines.enumerated() {
-            if index > 0 { result += AttributedString("\n") }
-            result += AttributedString(line.prefix + " - ")
-            var title = AttributedString(line.title)
-            title.font = .caption.weight(.heavy)
-            result += title
-            if let age = line.age { result += AttributedString(" - " + age) }
-        }
-        result += AttributedString("  ›")
+    /// « Devis - **Refonte du site** - 206j » (objet en gras), chevron « › » sur la dernière ligne.
+    static func attributed(_ line: LeadTags.TagLine, last: Bool) -> AttributedString {
+        var result = AttributedString(line.prefix + " - ")
+        var title = AttributedString(line.title)
+        title.font = .caption.weight(.heavy)
+        result += title
+        if let age = line.age { result += AttributedString(" - " + age) }
+        if last { result += AttributedString("  ›") }
         return result
+    }
+
+    /// Étiquette de plusieurs devis : une ligne par devis, chacune avec sa petite icône (demande d'Yves du 08/11/2026).
+    private func linesCapsule(_ lines: [LeadTags.TagLine], icon: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Image(systemName: icon)
+                    Text(Self.attributed(line, last: index == lines.count - 1))
+                        .multilineTextAlignment(.leading)
+                }
+            }
+        }
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(color.gradient))
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .combine)
     }
 
     private func tagCapsule(_ text: AttributedString, icon: String, color: Color) -> some View {
@@ -219,9 +235,6 @@ struct ActivityRow: View {
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(color)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(Capsule().fill(color.opacity(0.12)))
         .fixedSize()
         .layoutPriority(1)
         .accessibilityElement(children: .combine)

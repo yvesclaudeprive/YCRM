@@ -37,7 +37,7 @@ struct QuoteSheet: View {
                             .padding(.vertical, 10)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(.purple)
+                    .tint(.yateoRed)
                     .padding(.top, 6)
                 }
                 .padding(16)
@@ -108,7 +108,7 @@ struct QuoteSheet: View {
     private func color(_ status: QuoteAnalysis.Status) -> Color {
         switch status {
         case .signing: return .signingOrange
-        case .sent: return .purple
+        case .sent: return .yateoRed
         case .signed: return .green
         case .abandoned: return .gray
         }
@@ -209,7 +209,7 @@ struct QuoteSheet: View {
                     .foregroundStyle(.secondary)
             }
             .font(.subheadline)
-            .foregroundStyle(Color.purple)
+            .foregroundStyle(Color.yateoRed)
             Text(highlighted(quote.subject))
                 .font(.body.weight(.semibold))
             if let note = quote.note {
@@ -220,7 +220,7 @@ struct QuoteSheet: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.purple.opacity(0.08)))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.purple.opacity(0.2), lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.yateoRed.opacity(0.08)))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.yateoRed.opacity(0.2), lineWidth: 1))
     }
 }
