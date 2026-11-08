@@ -65,18 +65,41 @@ public struct LeadTags: Hashable, Sendable {
 
     public var isEmpty: Bool { !hasPendingQuote && !hasSigning && !firstCallToDo }
 
-    /// « En signature · il y a 2 j » (le plus récent).
+    /// « En signature · -2 j », « 2 en signature · -2 j » (ancienneté du plus récent ; format court demandé par Yves
+    /// le 08/11/2026).
     public func signingLabel(now: Date = Date(), timeZone: TimeZone) -> String? {
         guard let latest = signing.first else { return nil }
-        guard let ago = latest.agoText(now: now, timeZone: timeZone) else { return "En signature" }
-        return "En signature · \(ago)"
+        let head = signing.count > 1 ? "\(signing.count) en signature" : "En signature"
+        guard let ago = latest.shortAgoText(now: now, timeZone: timeZone) else { return head }
+        return "\(head) · \(ago)"
     }
 
-    /// « Devis envoyé · aujourd'hui / hier / il y a 5 j » ; rien si le devis est signé (demande d'Yves du 08/11/2026).
+    /// Titres des devis en signature, affichés sous l'étiquette sans avoir à toucher : « TMA -2 j · Refonte -9 j ».
+    public func signingTitles(now: Date = Date(), timeZone: TimeZone) -> String? {
+        Self.titles(signing, now: now, timeZone: timeZone)
+    }
+
+    /// Titres des devis envoyés en attente (rien si signé) : « Refonte du site -206 j · Audit sécurité -5 j ».
+    public func quoteTitles(now: Date = Date(), timeZone: TimeZone) -> String? {
+        guard hasPendingQuote else { return nil }
+        return Self.titles(quotes, now: now, timeZone: timeZone)
+    }
+
+    static func titles(_ quotes: [QuoteSent], now: Date, timeZone: TimeZone) -> String? {
+        let parts = quotes.map { quote -> String in
+            let ago = quote.shortAgoText(now: now, timeZone: timeZone).map { " \($0)" } ?? ""
+            return quote.subject + ago
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// « Devis envoyé · -5 j », « 3 devis envoyés · -5 j » (ancienneté du plus récent) ; rien si le devis est signé
+    /// (demandes d'Yves du 08/11/2026).
     public func quoteSentLabel(now: Date = Date(), timeZone: TimeZone) -> String? {
         guard hasPendingQuote, let latest = quotes.first else { return nil }
-        guard let ago = latest.agoText(now: now, timeZone: timeZone) else { return "Devis envoyé" }
-        return "Devis envoyé · \(ago)"
+        let head = quotes.count > 1 ? "\(quotes.count) devis envoyés" : "Devis envoyé"
+        guard let ago = latest.shortAgoText(now: now, timeZone: timeZone) else { return head }
+        return "\(head) · \(ago)"
     }
 
     static func daysBetween(_ from: String, _ to: String) -> Int? {
@@ -129,6 +152,12 @@ public struct QuoteSent: Hashable, Sendable, Identifiable {
     /// « aujourd'hui », « hier », « il y a 5 j ».
     public func agoText(now: Date = Date(), timeZone: TimeZone) -> String? {
         Self.ago(from: day, to: FrenchFormat.apiDay(from: now, timeZone: timeZone))
+    }
+
+    /// Format court des étiquettes : « auj. », « -1 j », « -9 j ».
+    public func shortAgoText(now: Date = Date(), timeZone: TimeZone) -> String? {
+        guard let days = LeadTags.daysBetween(day, FrenchFormat.apiDay(from: now, timeZone: timeZone)) else { return nil }
+        return days <= 0 ? "auj." : "-\(days) j"
     }
 
     public static func ago(from day: String, to today: String) -> String? {

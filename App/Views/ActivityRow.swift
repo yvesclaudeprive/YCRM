@@ -141,13 +141,36 @@ struct ActivityRow: View {
         }
     }
 
-    /// Étiquettes pleines (texte blanc) : « En signature · il y a 2 j » (orange, la plus chaude),
-    /// « Devis envoyé · il y a 5 j » (violet), « 1er call à faire » (rose). Sur deux lignes si elles ne tiennent pas.
+    /// Étiquettes pleines (texte blanc) : « En signature · -2 j » (orange, la plus chaude),
+    /// « 2 devis envoyés · -5 j » (violet), « 1er call à faire » (rose). Sur deux lignes si elles ne tiennent pas.
+    /// Sous les étiquettes, le titre des devis concernés, sans avoir à toucher (demande d'Yves du 08/11/2026).
     private func tagsRow(_ tags: LeadTags) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) { tagViews(tags) }
-            VStack(alignment: .leading, spacing: 6) { tagViews(tags) }
+        VStack(alignment: .leading, spacing: 4) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) { tagViews(tags) }
+                VStack(alignment: .leading, spacing: 6) { tagViews(tags) }
+            }
+            if let titles = tags.signingTitles(timeZone: parisTimeZone) {
+                quoteTitles(titles, icon: "signature", color: .signingOrange)
+            }
+            if let titles = tags.quoteTitles(timeZone: parisTimeZone) {
+                quoteTitles(titles, icon: "doc.text", color: .purple)
+            }
         }
+    }
+
+    private func quoteTitles(_ text: String, icon: String, color: Color) -> some View {
+        Label {
+            Text(text)
+                .lineLimit(2)
+        } icon: {
+            Image(systemName: icon)
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(color)
+        .labelStyle(.titleAndIcon)
+        .contentShape(Rectangle())
+        .onTapGesture { perform(.showQuotes) }
     }
 
     @ViewBuilder
