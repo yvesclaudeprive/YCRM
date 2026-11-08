@@ -115,7 +115,7 @@ final class QuoteAnalysisTests: XCTestCase {
     func testTagsFromAnalysis() throws {
         let analysis = try XCTUnwrap(QuoteAnalysis(text: Self.sample))
         let tags = LeadTags(analysis: analysis, firstCallToDo: false, now: Self.now, timeZone: paris)
-        XCTAssertEqual(tags.signingLabel(now: Self.now, timeZone: paris), "En signature - Montée de version - 2j")
+        XCTAssertEqual(tags.signingLabel(now: Self.now, timeZone: paris), "En signature - MEV - 2j")
         XCTAssertEqual(tags.quoteSentLabel(now: Self.now, timeZone: paris),
                        "Devis - Audit sécurité - 5j\nDevis - Refonte du site - 206j")
         let line = try XCTUnwrap(tags.quoteLines(now: Self.now, timeZone: paris).first)

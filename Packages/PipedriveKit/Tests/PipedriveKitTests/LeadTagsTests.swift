@@ -253,7 +253,7 @@ final class LeadTagsTests: XCTestCase {
         XCTAssertNotNil(tags.signature, "la signature est connue…")
         XCTAssertFalse(tags.isSigned, "…mais un devis plus récent attend")
         XCTAssertEqual(tags.quoteSentLabel(now: now, timeZone: paris),
-                       "Devis - Devis montée de version envoyé - 5j\nDevis - Maj devis envoyée - 69j")
+                       "Devis - Devis MEV envoyé - 5j\nDevis - Maj devis envoyée - 69j")
     }
 
     func testSignedFieldFromDeal() async throws {
@@ -428,7 +428,7 @@ final class LeadTagsTests: XCTestCase {
         XCTAssertEqual(quote.note, "Pièce jointe : Proposition_AGENCE_pour_CLIENT-Mise_à_jour-9.2.pdf")
         XCTAssertEqual(tags.signature?.day, "2026-05-22", "signature du lot 2, avant le nouveau devis")
         XCTAssertFalse(tags.isSigned)
-        XCTAssertEqual(tags.quoteSentLabel(now: Self.now, timeZone: paris), "Devis - Montée de version - Proposition - 5j")
+        XCTAssertEqual(tags.quoteSentLabel(now: Self.now, timeZone: paris), "Devis - MEV - Proposition - 5j")
     }
 
     /// Même jour qu'une activité « Devis envoyé » : l'e-mail n'ajoute pas un deuxième devis.
