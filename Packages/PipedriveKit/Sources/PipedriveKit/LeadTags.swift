@@ -36,15 +36,14 @@ public struct LeadTags: Hashable, Sendable {
     /// Jour (AAAA-MM-JJ, heure de Paris) du dernier « Devis envoyé », s'il y en a un.
     public var quoteSentDay: String? { quotes.first?.day }
 
-    public var isEmpty: Bool { quoteSentDay == nil && !firstCallToDo && !isSigned }
+    /// Devis envoyé et pas encore signé : seul cas où l'étiquette « Devis envoyé » s'affiche.
+    public var hasPendingQuote: Bool { !quotes.isEmpty && !isSigned }
 
-    /// « Devis signé · il y a 2 j » si signé, sinon « Devis envoyé · aujourd'hui / hier / il y a 5 j ».
+    public var isEmpty: Bool { !hasPendingQuote && !firstCallToDo }
+
+    /// « Devis envoyé · aujourd'hui / hier / il y a 5 j » ; rien si le devis est signé (demande d'Yves du 08/11/2026).
     public func quoteSentLabel(now: Date = Date(), timeZone: TimeZone) -> String? {
-        let today = FrenchFormat.apiDay(from: now, timeZone: timeZone)
-        if isSigned, let signature {
-            return "Devis signé · " + (QuoteSent.ago(from: signature.day, to: today) ?? signature.dateText)
-        }
-        guard let latest = quotes.first else { return nil }
+        guard hasPendingQuote, let latest = quotes.first else { return nil }
         guard let ago = latest.agoText(now: now, timeZone: timeZone) else { return "Devis envoyé" }
         return "Devis envoyé · \(ago)"
     }
@@ -184,6 +183,40 @@ extension LeadTagRules {
         }
         return nil
     }
+
+    static let kickoffRegex = try? NSRegularExpression(
+        pattern: #"\b(?:kick[- ]?off|onboarding)\b|\b(?:rdv|rendez-vous|réunion|reunion|call|point) de (?:lancement|démarrage|demarrage)\b"#,
+        options: [.caseInsensitive])
+
+    /// Lancement du projet (« rdv de lancement SEO effectué », « kickoff », « onboarding ») : le devis a été signé.
+    public static func isKickoff(_ activity: Activity) -> Bool {
+        guard activity.done, let kickoffRegex else { return false }
+        let subject = activity.subject
+        return kickoffRegex.firstMatch(in: subject, range: NSRange(location: 0, length: (subject as NSString).length)) != nil
+    }
+}
+
+/// Filtre « Étiquettes » de la liste (demande d'Yves du 08/11/2026).
+public enum TagFilter: String, CaseIterable, Sendable, Identifiable {
+    case all, quoteSent, firstCall
+
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .all: return "Toutes"
+        case .quoteSent: return "Devis envoyé"
+        case .firstCall: return "1er call à faire"
+        }
+    }
+
+    public func matches(_ tags: LeadTags) -> Bool {
+        switch self {
+        case .all: return true
+        case .quoteSent: return tags.hasPendingQuote
+        case .firstCall: return tags.firstCallToDo
+        }
+    }
 }
 
 /// Calcule les étiquettes d'une fiche à partir de Pipedrive (1 à 4 requêtes, faites quand la carte apparaît).
@@ -199,7 +232,7 @@ public struct LeadTagsLoader: Sendable {
         let dealID = item.activity.dealID
         let personID = item.person?.id ?? item.activity.personID
         guard dealID != nil || personID != nil else { return .none }
-        // Affaire perdue : pas d'étiquette. Affaire gagnée : « Devis signé » (date de gain).
+        // Affaire perdue : pas d'étiquette. Affaire gagnée : signée (date de gain), donc pas d'étiquette non plus.
         if let deal = item.deal, deal.status == "lost" { return .none }
         if let deal = item.deal, deal.status == "won" {
             let day = deal.wonTime.flatMap(FrenchFormat.parseInstant).map { FrenchFormat.apiDay(from: $0, timeZone: timeZone) }
@@ -253,6 +286,11 @@ public struct LeadTagsLoader: Sendable {
             for activity in dealDone {
                 guard let day = activity.localDay(timeZone: timeZone), !LeadTagRules.isQuoteSent(activity, typeNames: typeNames)
                 else { continue }
+                if LeadTagRules.isKickoff(activity) {
+                    evidences.append(SignatureEvidence(source: .activity, day: day, dateText: activity.displayDate(now: now),
+                                                       text: activity.subject))
+                    continue
+                }
                 let text = activity.subject + "\n" + (activity.note.map(PlainText.from(html:)) ?? "")
                 if let excerpt = LeadTagRules.signedExcerpt(in: text) {
                     evidences.append(SignatureEvidence(source: .activity, day: day, dateText: activity.displayDate(now: now),
@@ -272,6 +310,7 @@ public struct LeadTagsLoader: Sendable {
             }
         }
         let signature = evidences.max { $0.day < $1.day }
-        return LeadTags(quotes: quotes, firstCallToDo: !spoke, signature: signature)
+        // Une signature (même ancienne) prouve qu'on s'est déjà parlé : pas de « 1er call à faire ».
+        return LeadTags(quotes: quotes, firstCallToDo: !spoke && signature == nil, signature: signature)
     }
 }

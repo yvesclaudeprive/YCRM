@@ -5,7 +5,7 @@ import Foundation
 public struct ActivityFeedLoader: Sendable {
     /// Nom du champ d'affaire utilisé pour le tri (retrouvé par son nom, le code dépend du compte).
     public static let scoreFieldName = "Score priorisation"
-    /// Champ d'affaire facultatif « Contrat signé le » (date) : s'il existe, l'étiquette passe en « Devis signé ».
+    /// Champ d'affaire facultatif « Contrat signé le » (date) : s'il existe, le devis est considéré signé (plus d'étiquette).
     public static let signedFieldName = "Contrat signé le"
 
     let client: PipedriveClient

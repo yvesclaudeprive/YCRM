@@ -10,7 +10,8 @@ struct FilterView: View {
     let users: [PipedriveUser]
     let myID: Int?
     let score: ScoreFilter
-    let onApply: (DatePreset, Date, Date, Set<Int>, ScoreFilter) -> Void
+    let tag: TagFilter
+    let onApply: (DatePreset, Date, Date, Set<Int>, ScoreFilter, TagFilter) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var selectedPreset: DatePreset = .defaultPreset
@@ -18,6 +19,7 @@ struct FilterView: View {
     @State private var to = Date()
     @State private var selectedOwners: Set<Int> = []
     @State private var selectedScore: ScoreFilter = .all
+    @State private var selectedTag: TagFilter = .all
 
     var body: some View {
         NavigationStack {
@@ -55,6 +57,20 @@ struct FilterView: View {
                 }
 
                 Section {
+                    Picker("Étiquettes", selection: $selectedTag) {
+                        ForEach(TagFilter.allCases) { option in
+                            Text(option.label).tag(option)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } header: {
+                    Text("Étiquettes")
+                } footer: {
+                    Text("Seulement les activités avec cette étiquette (devis envoyé non signé, ou contact jamais eu au téléphone). Toute la liste est vérifiée dans Pipedrive : les activités apparaissent au fur et à mesure.")
+                }
+
+                Section {
                     ForEach(sortedUsers) { user in
                         Button {
                             toggle(user.id)
@@ -88,7 +104,7 @@ struct FilterView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Appliquer") {
-                        onApply(selectedPreset, from, to, selectedOwners, selectedScore)
+                        onApply(selectedPreset, from, to, selectedOwners, selectedScore, selectedTag)
                         dismiss()
                     }
                     .disabled(selectedOwners.isEmpty)
@@ -100,6 +116,7 @@ struct FilterView: View {
                 to = customTo
                 selectedOwners = owners.isEmpty ? Set([myID].compactMap { $0 }) : owners
                 selectedScore = score
+                selectedTag = tag
             }
         }
         .presentationBackground(.background)

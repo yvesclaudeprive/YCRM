@@ -166,7 +166,50 @@ final class LeadTagsTests: XCTestCase {
         XCTAssertEqual(tags.signature?.source, .note, "la note Leexi « a signé avec une autre agence » est ignorée")
         XCTAssertEqual(tags.signature?.day, "2026-09-02")
         XCTAssertEqual(tags.signature?.text, "c'est signé pour SEO / SEA / TMA")
-        XCTAssertEqual(tags.quoteSentLabel(now: now, timeZone: paris), "Devis signé · il y a 67 j")
+        XCTAssertNil(tags.quoteSentLabel(now: now, timeZone: paris), "signé : plus d'étiquette")
+        XCTAssertTrue(tags.isEmpty)
+        XCTAssertFalse(TagFilter.quoteSent.matches(tags))
+    }
+
+    func testKickoffMeansSigned() async throws {
+        let activities = """
+        {"success":true,"data":[
+          {"id":41,"subject":"rdv de lancement SEO effectué","type":"call_effectue","due_date":"2026-01-27","done":true,"deal_id":100,"person_id":200},
+          {"id":42,"subject":"devis seo mis à jour renvoyé","type":"devis_envoy","due_date":"2025-10-06","done":true,"deal_id":100,"person_id":200}
+        ]}
+        """
+        let transport = MockTransport([
+            "GET /api/v2/activities?deal_id=100": .init(status: 200, body: activities),
+            "GET /api/v1/notes": .init(status: 200, body: #"{"success":true,"data":[]}"#),
+        ])
+        let tags = try await LeadTagsLoader(client: client(transport)).load(for: item(), typeNames: names, timeZone: paris)
+        XCTAssertTrue(tags.isSigned)
+        XCTAssertEqual(tags.signature?.text, "rdv de lancement SEO effectué")
+        XCTAssertTrue(tags.isEmpty, "devis signé, déjà parlé : aucune étiquette")
+    }
+
+    func testKickoffRule() {
+        func done(_ subject: String) -> Activity {
+            Activity(id: 1, subject: subject, type: "task", dueDate: "2026-01-27", dueTime: nil, dealID: 100, personID: nil,
+                     orgID: nil, done: true)
+        }
+        XCTAssertTrue(LeadTagRules.isKickoff(done("rdv de lancement SEO effectué")))
+        XCTAssertTrue(LeadTagRules.isKickoff(done("Kick-off projet")))
+        XCTAssertTrue(LeadTagRules.isKickoff(done("Call onboarding Google Ads")))
+        XCTAssertTrue(LeadTagRules.isKickoff(done("Réunion de démarrage TMA")))
+        XCTAssertFalse(LeadTagRules.isKickoff(done("lancement des campagnes")))
+        XCTAssertFalse(LeadTagRules.isKickoff(done("Relancer pour signer")))
+    }
+
+    func testTagFilter() {
+        let pending = LeadTags(quoteSentDay: "2026-11-03", firstCallToDo: false)
+        let neverCalled = LeadTags(quotes: [], firstCallToDo: true)
+        XCTAssertTrue(TagFilter.quoteSent.matches(pending))
+        XCTAssertFalse(TagFilter.quoteSent.matches(neverCalled))
+        XCTAssertTrue(TagFilter.firstCall.matches(neverCalled))
+        XCTAssertFalse(TagFilter.firstCall.matches(pending))
+        XCTAssertTrue(TagFilter.all.matches(.none))
+        XCTAssertEqual(TagFilter.allCases.map(\.label), ["Toutes", "Devis envoyé", "1er call à faire"])
     }
 
     func testNewerQuoteAfterSignatureIsPending() async throws {
@@ -219,7 +262,8 @@ final class LeadTagsTests: XCTestCase {
         XCTAssertTrue(tags.isSigned)
         XCTAssertEqual(tags.signature?.source, .dealWon)
         XCTAssertFalse(tags.firstCallToDo)
-        XCTAssertEqual(tags.quoteSentLabel(now: now, timeZone: paris), "Devis signé · il y a 62 j")
+        XCTAssertNil(tags.quoteSentLabel(now: now, timeZone: paris), "affaire gagnée : plus d'étiquette")
+        XCTAssertTrue(tags.isEmpty)
 
         let lost = DealSummary(id: 100, title: "Site", orgID: nil, personID: 200, score: nil, status: "lost")
         let none = try await LeadTagsLoader(client: client(transport)).load(for: item(deal: lost), typeNames: names, timeZone: paris)

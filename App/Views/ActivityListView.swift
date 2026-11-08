@@ -47,6 +47,9 @@ struct ActivityListView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
+                if let progress = feed.tagsProgress {
+                    tagsProgressBanner(progress)
+                }
                 if let error = feed.errorMessage, !feed.items.isEmpty {
                     Text(error)
                         .font(.footnote)
@@ -101,10 +104,10 @@ struct ActivityListView: View {
         .sheet(isPresented: $showFilter) {
             FilterView(preset: feed.datePreset, customFrom: feed.customFrom, customTo: feed.customTo,
                        owners: feed.ownerIDs, users: feed.users, myID: session.userID,
-                       score: feed.scoreFilter) { preset, from, to, owners, score in
+                       score: feed.scoreFilter, tag: feed.tagFilter) { preset, from, to, owners, score, tag in
                 Task {
                     await feed.applyFilters(preset: preset, from: from, to: to, owners: owners, score: score,
-                                            session: session)
+                                            tag: tag, session: session)
                 }
             }
         }
@@ -216,6 +219,19 @@ struct ActivityListView: View {
         Binding(get: { feed.search }, set: { feed.updateSearch($0) })
     }
 
+    /// Filtre « Étiquettes » : vérification de toute la liste en cours (les activités apparaissent au fur et à mesure).
+    private func tagsProgressBanner(_ progress: TagsProgress) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("« \(feed.tagFilter.label) » : vérification de \(progress.done) / \(progress.total) activités…")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ProgressView(value: Double(progress.done), total: Double(max(progress.total, 1)))
+                .tint(.purple)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.purple.opacity(0.08)))
+    }
+
     /// Bandeau de groupe : « À venir · N activités » (après les retards et le jour),
     /// « Sans score · N activités » (après les activités notées du même groupe).
     private func sectionHeader(icon: String, text: String, count: Int) -> some View {
@@ -246,8 +262,13 @@ struct ActivityListView: View {
             } actions: {
                 Button("Réessayer") { Task { await feed.reload(session: session) } }
             }
+        } else if feed.filteredItems.isEmpty, feed.tagsProgress != nil {
+            ProgressView("Recherche des activités « \(feed.tagFilter.label) »…")
         } else if feed.filteredItems.isEmpty {
-            if feed.search.isEmpty {
+            if feed.tagFilter != .all && feed.search.isEmpty {
+                ContentUnavailableView("Aucune activité", systemImage: "tag",
+                                       description: Text("Aucune activité avec l'étiquette « \(feed.tagFilter.label) »."))
+            } else if feed.search.isEmpty {
                 ContentUnavailableView("Aucune activité", systemImage: "checkmark.circle",
                                        description: Text("Rien à faire pour « \(feed.filter.label) ».") )
             } else {

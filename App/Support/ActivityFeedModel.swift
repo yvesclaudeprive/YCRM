@@ -14,6 +14,12 @@ enum HistorySection: String {
     case activities, leexi
 }
 
+/// Avancement du calcul de toutes les étiquettes (filtre « Étiquettes » actif).
+struct TagsProgress: Equatable {
+    var done: Int
+    let total: Int
+}
+
 /// État de la liste : chargement, filtre de dates, recherche, affichage par pages.
 @MainActor
 @Observable
@@ -30,6 +36,7 @@ final class ActivityFeedModel {
     private(set) var customTo = Date()
     private(set) var ownerIDs: Set<Int> = []
     private(set) var scoreFilter: ScoreFilter = .all
+    private(set) var tagFilter: TagFilter = .all
     private(set) var users: [PipedriveUser] = []
 
     var filter: ActivityDateFilter {
@@ -39,14 +46,25 @@ final class ActivityFeedModel {
     private(set) var visibleCount = ActivityFeedModel.pageSize
     private var activityTypes: [ActivityType] = []
     private(set) var history: [Int: HistoryState] = [:]
-    /// Étiquettes « Devis envoyé » / « 1er call à faire », par activité, calculées quand la carte apparaît.
+    /// Étiquettes « Devis envoyé » / « 1er call à faire », par activité, calculées quand la carte apparaît
+    /// (ou pour toute la liste quand le filtre « Étiquettes » est actif). Gardées 15 min entre deux rechargements.
     private(set) var tags: [Int: LeadTags] = [:]
+    private var tagsComputedAt: [Int: Date] = [:]
     private var tagsInFlight: Set<Int> = []
+    /// Calcul de toutes les étiquettes en cours (nil sinon).
+    private(set) var tagsProgress: TagsProgress?
+    private var allTagsTask: Task<Void, Never>?
+    static let tagsLifetime: TimeInterval = 15 * 60
     /// Incrémenté quand des étiquettes doivent être recalculées (les cartes visibles relancent leur calcul).
     private(set) var tagsGeneration = 0
 
     var filteredItems: [ActivityItem] {
-        items.filter { $0.matches(search: search) && scoreFilter.matches($0) }
+        items.filter { item in
+            guard item.matches(search: search), scoreFilter.matches(item) else { return false }
+            guard tagFilter != .all else { return true }
+            // Filtre « Étiquettes » : seules les activités dont les étiquettes sont déjà calculées et correspondent.
+            return tags[item.id].map(tagFilter.matches) ?? false
+        }
     }
 
     /// Jour courant à Paris (groupes « en retard / du jour » puis « à venir »).
@@ -92,9 +110,15 @@ final class ActivityFeedModel {
                                                                    timeZone: parisTimeZone)
             visibleCount = Self.pageSize
             history = [:]
-            tags = [:]
+            // Étiquettes récentes conservées (évite de tout recalculer à chaque rechargement).
+            let freshSince = Date().addingTimeInterval(-Self.tagsLifetime)
+            for (id, date) in tagsComputedAt where date < freshSince {
+                tags[id] = nil
+                tagsComputedAt[id] = nil
+            }
             tagsGeneration += 1
             errorMessage = nil
+            if tagFilter != .all { startComputingAllTags(session: session) }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -106,13 +130,21 @@ final class ActivityFeedModel {
     }
 
     func applyFilters(preset: DatePreset, from: Date, to: Date, owners: Set<Int>, score: ScoreFilter,
-                      session: AppSession) async {
+                      tag: TagFilter, session: AppSession) async {
         let sameQuery = preset == datePreset && owners == ownerIDs
             && (preset != .custom || (from == customFrom && to == customTo))
         scoreFilter = score
+        tagFilter = tag
         visibleCount = Self.pageSize
-        // Seul le filtre de score a changé : pas besoin de recharger Pipedrive.
-        if sameQuery && hasLoaded { return }
+        if tag == .all {
+            allTagsTask?.cancel()
+            tagsProgress = nil
+        }
+        // Seuls les filtres de score / d'étiquettes ont changé : pas besoin de recharger Pipedrive.
+        if sameQuery && hasLoaded {
+            if tag != .all { startComputingAllTags(session: session) }
+            return
+        }
         datePreset = preset
         customFrom = from
         customTo = to
@@ -122,7 +154,7 @@ final class ActivityFeedModel {
 
     /// Filtres d'origine : jusqu'à aujourd'hui, mes activités.
     func isDefaultFilter(myID: Int?) -> Bool {
-        datePreset == .defaultPreset && scoreFilter == .all
+        datePreset == .defaultPreset && scoreFilter == .all && tagFilter == .all
             && (ownerIDs.isEmpty || ownerIDs == Set([myID].compactMap { $0 }))
     }
 
@@ -173,14 +205,63 @@ final class ActivityFeedModel {
         defer { tagsInFlight.remove(item.id) }
         do {
             try await loadActivityTypes(session: session)
-            let names = Dictionary(activityTypes.map { ($0.key, $0.name) }, uniquingKeysWith: { first, _ in first })
             let result = try await LeadTagsLoader(client: session.makeClient()).load(
-                for: item, typeNames: names, timeZone: parisTimeZone)
+                for: item, typeNames: activityTypeNames, timeZone: parisTimeZone)
             guard !Task.isCancelled else { return }
-            tags[item.id] = result
+            store(result, for: item.id)
         } catch {
             // Carte quittée ou erreur réseau : on réessaiera à la prochaine apparition.
         }
+    }
+
+    private var activityTypeNames: [String: String] {
+        Dictionary(activityTypes.map { ($0.key, $0.name) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    private func store(_ result: LeadTags, for id: Int) {
+        tags[id] = result
+        tagsComputedAt[id] = Date()
+    }
+
+    /// Filtre « Étiquettes » actif : calcule les étiquettes de toute la liste, 4 activités à la fois.
+    func startComputingAllTags(session: AppSession) {
+        allTagsTask?.cancel()
+        allTagsTask = Task { await computeAllTags(session: session) }
+    }
+
+    private func computeAllTags(session: AppSession) async {
+        let pending = items.filter { tags[$0.id] == nil && !tagsInFlight.contains($0.id) }
+        guard !pending.isEmpty, let client = try? session.makeClient() else {
+            tagsProgress = nil
+            return
+        }
+        try? await loadActivityTypes(session: session)
+        let names = activityTypeNames
+        let ids = Set(pending.map(\.id))
+        tagsInFlight.formUnion(ids)
+        defer { tagsInFlight.subtract(ids) }
+        tagsProgress = TagsProgress(done: 0, total: pending.count)
+        await withTaskGroup(of: (Int, LeadTags?).self) { group in
+            var queue = pending[...]
+            func enqueue() {
+                guard let item = queue.popFirst() else { return }
+                group.addTask {
+                    (item.id, try? await LeadTagsLoader(client: client).load(for: item, typeNames: names,
+                                                                            timeZone: parisTimeZone))
+                }
+            }
+            for _ in 0..<4 { enqueue() }
+            for await (id, result) in group {
+                if Task.isCancelled {
+                    group.cancelAll()
+                    break
+                }
+                if let result { store(result, for: id) }
+                tagsProgress?.done += 1
+                enqueue()
+            }
+        }
+        if !Task.isCancelled { tagsProgress = nil }
     }
 
     /// Après une alerte enregistrée ou annulée : recalcule les étiquettes des cartes du même contact / de la même affaire.
@@ -190,7 +271,10 @@ final class ActivityFeedModel {
         for other in items {
             let sameDeal = dealID != nil && other.activity.dealID == dealID
             let samePerson = personID != nil && (other.person?.id ?? other.activity.personID) == personID
-            if sameDeal || samePerson { tags[other.id] = nil }
+            if sameDeal || samePerson {
+                tags[other.id] = nil
+                tagsComputedAt[other.id] = nil
+            }
         }
         tagsGeneration += 1
     }
