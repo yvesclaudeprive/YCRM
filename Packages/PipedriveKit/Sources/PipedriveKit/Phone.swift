@@ -30,7 +30,7 @@ public enum PhoneNumber {
         return e164.hasPrefix("+336") || e164.hasPrefix("+337")
     }
 
-    /// Affichage lisible : « +33 6 69 04 82 83 » pour la France, sinon le numéro international.
+    /// Affichage lisible : « +33 6 12 34 56 78 » pour la France, sinon le numéro international.
     public static func display(_ e164: String) -> String {
         guard e164.hasPrefix("+33"), e164.count == 12 else { return e164 }
         let national = Array(e164.dropFirst(3))

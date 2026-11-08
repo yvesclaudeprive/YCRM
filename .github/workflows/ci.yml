@@ -86,6 +86,8 @@ jobs:
       - name: Scanner (valeurs masquées)
         run: |
           "$RUNNER_TEMP/gitleaks" detect --source . --redact --no-banner --exit-code 1 --log-opts=HEAD
+      - name: Aucune donnée personnelle (e-mails, numéros, adresse Pipedrive, codes)
+        run: ./scripts/verifier-publication.sh
 
   workflows:
     name: vérification des workflows (actionlint)

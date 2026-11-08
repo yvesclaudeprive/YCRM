@@ -113,4 +113,20 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(persons[0].phones.map(\.value), ["06 11 22 33 44", "01 23 45 67 89"])
         XCTAssertEqual(persons[2].emails.count, 1, "même adresse en majuscules = doublon")
     }
+
+    func testScoreFilter() {
+        let activity = Activity(id: 1, subject: "Relancer", type: "task", dueDate: "2026-11-08", dueTime: nil,
+                                dealID: 100, personID: nil, orgID: nil, done: false)
+        let scored = ActivityItem(activity: activity, organizationName: nil, person: nil,
+                                  deal: DealSummary(id: 100, title: "", orgID: nil, personID: nil, score: 42))
+        let unscored = ActivityItem(activity: activity, organizationName: nil, person: nil,
+                                    deal: DealSummary(id: 100, title: "", orgID: nil, personID: nil, score: nil))
+        let noDeal = ActivityItem(activity: activity, organizationName: nil, person: nil, deal: nil)
+        XCTAssertTrue(ScoreFilter.all.matches(scored) && ScoreFilter.all.matches(noDeal))
+        XCTAssertTrue(ScoreFilter.scored.matches(scored))
+        XCTAssertFalse(ScoreFilter.scored.matches(unscored))
+        XCTAssertTrue(ScoreFilter.unscored.matches(unscored) && ScoreFilter.unscored.matches(noDeal))
+        XCTAssertFalse(ScoreFilter.unscored.matches(scored))
+        XCTAssertEqual(ScoreFilter.allCases.map(\.label), ["Tous", "Avec score", "Sans score"])
+    }
 }

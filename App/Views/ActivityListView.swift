@@ -53,6 +53,9 @@ struct ActivityListView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 ForEach(Array(feed.visibleItems.enumerated()), id: \.element.id) { index, item in
+                    if item.score == nil, index == 0 || feed.visibleItems[index - 1].score != nil {
+                        unscoredHeader
+                    }
                     ActivityRow(
                         item: item,
                         isBusy: busyItemIDs.contains(item.id),
@@ -89,8 +92,12 @@ struct ActivityListView: View {
         }
         .sheet(isPresented: $showFilter) {
             FilterView(preset: feed.datePreset, customFrom: feed.customFrom, customTo: feed.customTo,
-                       owners: feed.ownerIDs, users: feed.users, myID: session.userID) { preset, from, to, owners in
-                Task { await feed.applyFilters(preset: preset, from: from, to: to, owners: owners, session: session) }
+                       owners: feed.ownerIDs, users: feed.users, myID: session.userID,
+                       score: feed.scoreFilter) { preset, from, to, owners, score in
+                Task {
+                    await feed.applyFilters(preset: preset, from: from, to: to, owners: owners, score: score,
+                                            session: session)
+                }
             }
         }
         .sheet(isPresented: $showSettings) {
@@ -194,6 +201,19 @@ struct ActivityListView: View {
 
     private var searchBinding: Binding<String> {
         Binding(get: { feed.search }, set: { feed.updateSearch($0) })
+    }
+
+    /// Bandeau avant la première activité sans score (elles sont classées après les autres).
+    private var unscoredHeader: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "number.circle")
+            Text("Sans score · \(feed.unscoredCount) activité\(feed.unscoredCount > 1 ? "s" : "")")
+        }
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 8)
+        .padding(.horizontal, 4)
     }
 
     private var isDefaultFilter: Bool {

@@ -1,6 +1,7 @@
 name: testflight
 
-# Envoi d'une version de l'app YCRM sur TestFlight (lancement manuel : Actions › testflight › Run workflow).
+# Envoi d'une version de l'app YCRM sur TestFlight (lancement manuel : Actions › testflight › Run workflow,
+# ou par Claude après chaque modification validée).
 # Signature gérée par Apple (cloud signing) via la clé API App Store Connect :
 # aucun certificat ni profil à stocker. Secrets requis (Settings › Secrets and variables › Actions) :
 #   APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_PRIVATE_KEY (contenu du fichier .p8).

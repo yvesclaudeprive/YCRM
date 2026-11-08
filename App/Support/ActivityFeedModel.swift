@@ -29,6 +29,7 @@ final class ActivityFeedModel {
     private(set) var customFrom = Date()
     private(set) var customTo = Date()
     private(set) var ownerIDs: Set<Int> = []
+    private(set) var scoreFilter: ScoreFilter = .all
     private(set) var users: [PipedriveUser] = []
 
     var filter: ActivityDateFilter {
@@ -45,7 +46,12 @@ final class ActivityFeedModel {
     private(set) var tagsGeneration = 0
 
     var filteredItems: [ActivityItem] {
-        items.filter { $0.matches(search: search) }
+        items.filter { $0.matches(search: search) && scoreFilter.matches($0) }
+    }
+
+    /// Nombre d'activités sans score dans la liste affichée (bandeau « Sans score »).
+    var unscoredCount: Int {
+        filteredItems.filter { $0.score == nil }.count
     }
 
     var visibleItems: [ActivityItem] {
@@ -85,7 +91,14 @@ final class ActivityFeedModel {
         visibleCount = Self.pageSize
     }
 
-    func applyFilters(preset: DatePreset, from: Date, to: Date, owners: Set<Int>, session: AppSession) async {
+    func applyFilters(preset: DatePreset, from: Date, to: Date, owners: Set<Int>, score: ScoreFilter,
+                      session: AppSession) async {
+        let sameQuery = preset == datePreset && owners == ownerIDs
+            && (preset != .custom || (from == customFrom && to == customTo))
+        scoreFilter = score
+        visibleCount = Self.pageSize
+        // Seul le filtre de score a changé : pas besoin de recharger Pipedrive.
+        if sameQuery && hasLoaded { return }
         datePreset = preset
         customFrom = from
         customTo = to
@@ -95,7 +108,8 @@ final class ActivityFeedModel {
 
     /// Filtres d'origine : jusqu'à aujourd'hui, mes activités.
     func isDefaultFilter(myID: Int?) -> Bool {
-        datePreset == .untilToday && (ownerIDs.isEmpty || ownerIDs == Set([myID].compactMap { $0 }))
+        datePreset == .untilToday && scoreFilter == .all
+            && (ownerIDs.isEmpty || ownerIDs == Set([myID].compactMap { $0 }))
     }
 
     func userName(_ id: Int?) -> String? {

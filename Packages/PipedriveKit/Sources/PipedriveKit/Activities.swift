@@ -252,6 +252,30 @@ public enum DebriefTemplate {
     public static let noteHTML = "<p>Je l'ai eu au téléphone et :</p><ul><li>x</li></ul>"
 }
 
+/// Filtre « Score » (demande d'Yves du 08/11/2026) : les activités sans « Score priorisation »
+/// (affaire non notée ou pas d'affaire) sont affichées après les autres, ce filtre permet de les isoler.
+public enum ScoreFilter: String, CaseIterable, Sendable, Identifiable {
+    case all, scored, unscored
+
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .all: return "Tous"
+        case .scored: return "Avec score"
+        case .unscored: return "Sans score"
+        }
+    }
+
+    public func matches(_ item: ActivityItem) -> Bool {
+        switch self {
+        case .all: return true
+        case .scored: return item.score != nil
+        case .unscored: return item.score == nil
+        }
+    }
+}
+
 /// Raccourcis du filtre « Date ».
 public enum DatePreset: String, CaseIterable, Sendable, Identifiable {
     case untilToday, today, overdue, upcoming, next7Days, next30Days, all, custom

@@ -9,13 +9,15 @@ struct FilterView: View {
     let owners: Set<Int>
     let users: [PipedriveUser]
     let myID: Int?
-    let onApply: (DatePreset, Date, Date, Set<Int>) -> Void
+    let score: ScoreFilter
+    let onApply: (DatePreset, Date, Date, Set<Int>, ScoreFilter) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var selectedPreset: DatePreset = .untilToday
     @State private var from = Date()
     @State private var to = Date()
     @State private var selectedOwners: Set<Int> = []
+    @State private var selectedScore: ScoreFilter = .all
 
     var body: some View {
         NavigationStack {
@@ -36,6 +38,20 @@ struct FilterView: View {
                     Text("Date")
                 } footer: {
                     Text(selectedPreset.filter(timeZone: parisTimeZone, customFrom: from, customTo: to).label)
+                }
+
+                Section {
+                    Picker("Score", selection: $selectedScore) {
+                        ForEach(ScoreFilter.allCases) { option in
+                            Text(option.label).tag(option)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                } header: {
+                    Text("Score")
+                } footer: {
+                    Text("Sans score : affaire sans « Score priorisation », ou activité sans affaire. Elles sont affichées après les autres.")
                 }
 
                 Section {
@@ -72,7 +88,7 @@ struct FilterView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Appliquer") {
-                        onApply(selectedPreset, from, to, selectedOwners)
+                        onApply(selectedPreset, from, to, selectedOwners, selectedScore)
                         dismiss()
                     }
                     .disabled(selectedOwners.isEmpty)
@@ -83,6 +99,7 @@ struct FilterView: View {
                 from = customFrom
                 to = customTo
                 selectedOwners = owners.isEmpty ? Set([myID].compactMap { $0 }) : owners
+                selectedScore = score
             }
         }
         .presentationBackground(.background)
