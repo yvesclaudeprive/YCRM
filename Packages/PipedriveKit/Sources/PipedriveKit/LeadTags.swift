@@ -13,15 +13,30 @@ public struct LeadTags: Hashable, Sendable {
     public let firstCallToDo: Bool
     /// Preuve de signature la plus récente (affaire gagnée, champ « Contrat signé le », note ou activité « … signé »).
     public let signature: SignatureEvidence?
+    /// Devis envoyés en signature (DocuSign, bon de commande) et pas encore signés, d'après l'analyse de Claude.
+    public let signing: [QuoteSent]
+    /// Analyse de Claude (champ d'affaire « Devis en attente ») : quand elle existe, elle fait foi.
+    public let analysis: QuoteAnalysis?
 
-    public init(quotes: [QuoteSent], firstCallToDo: Bool, signature: SignatureEvidence? = nil) {
+    public init(quotes: [QuoteSent], firstCallToDo: Bool, signature: SignatureEvidence? = nil, signing: [QuoteSent] = [],
+                analysis: QuoteAnalysis? = nil) {
         self.quotes = quotes
         self.firstCallToDo = firstCallToDo
         self.signature = signature
+        self.signing = signing
+        self.analysis = analysis
+    }
+
+    /// Étiquettes tirées de l'analyse de Claude : « En signature » et « Devis envoyé » devis par devis.
+    public init(analysis: QuoteAnalysis, firstCallToDo: Bool, now: Date = Date(), timeZone: TimeZone) {
+        self.init(quotes: analysis.quotes(.sent, now: now, timeZone: timeZone), firstCallToDo: firstCallToDo,
+                  signing: analysis.quotes(.signing, now: now, timeZone: timeZone), analysis: analysis)
     }
 
     /// Signé : une preuve de signature datée du dernier devis envoyé ou après (un devis plus récent repasse en « envoyé »).
+    /// Avec l'analyse de Claude : plus rien en attente et au moins un devis signé.
     public var isSigned: Bool {
+        if let analysis { return quotes.isEmpty && signing.isEmpty && !analysis.entries(.signed).isEmpty }
         guard let signature else { return false }
         guard let quoteDay = quoteSentDay else { return true }
         return signature.day >= quoteDay
@@ -43,9 +58,19 @@ public struct LeadTags: Hashable, Sendable {
     public var quoteSentDay: String? { quotes.first?.day }
 
     /// Devis envoyé et pas encore signé : seul cas où l'étiquette « Devis envoyé » s'affiche.
-    public var hasPendingQuote: Bool { !quotes.isEmpty && !isSigned }
+    public var hasPendingQuote: Bool { analysis != nil ? !quotes.isEmpty : !quotes.isEmpty && !isSigned }
 
-    public var isEmpty: Bool { !hasPendingQuote && !firstCallToDo }
+    /// Devis en signature (DocuSign envoyé, pas encore signé) : étiquette « En signature », plus chaude.
+    public var hasSigning: Bool { !signing.isEmpty }
+
+    public var isEmpty: Bool { !hasPendingQuote && !hasSigning && !firstCallToDo }
+
+    /// « En signature · il y a 2 j » (le plus récent).
+    public func signingLabel(now: Date = Date(), timeZone: TimeZone) -> String? {
+        guard let latest = signing.first else { return nil }
+        guard let ago = latest.agoText(now: now, timeZone: timeZone) else { return "En signature" }
+        return "En signature · \(ago)"
+    }
 
     /// « Devis envoyé · aujourd'hui / hier / il y a 5 j » ; rien si le devis est signé (demande d'Yves du 08/11/2026).
     public func quoteSentLabel(now: Date = Date(), timeZone: TimeZone) -> String? {
@@ -76,6 +101,8 @@ public struct QuoteSent: Hashable, Sendable, Identifiable {
         case activity
         /// E-mail de l'agence au client avec le devis en pièce jointe.
         case mail
+        /// Ligne de l'analyse de Claude (champ « Devis en attente »).
+        case analysis
     }
 
     /// Identifiant de l'activité ou de l'e-mail.
@@ -104,7 +131,7 @@ public struct QuoteSent: Hashable, Sendable, Identifiable {
         Self.ago(from: day, to: FrenchFormat.apiDay(from: now, timeZone: timeZone))
     }
 
-    static func ago(from day: String, to today: String) -> String? {
+    public static func ago(from day: String, to today: String) -> String? {
         guard let days = LeadTags.daysBetween(day, today) else { return nil }
         switch days {
         case ..<1: return "aujourd'hui"
@@ -242,13 +269,14 @@ extension LeadTagRules {
 
 /// Filtre « Étiquettes » de la liste (demande d'Yves du 08/11/2026).
 public enum TagFilter: String, CaseIterable, Sendable, Identifiable {
-    case all, quoteSent, firstCall
+    case all, signing, quoteSent, firstCall
 
     public var id: String { rawValue }
 
     public var label: String {
         switch self {
         case .all: return "Toutes"
+        case .signing: return "En signature"
         case .quoteSent: return "Devis envoyé"
         case .firstCall: return "1er call à faire"
         }
@@ -257,6 +285,7 @@ public enum TagFilter: String, CaseIterable, Sendable, Identifiable {
     public func matches(_ tags: LeadTags) -> Bool {
         switch self {
         case .all: return true
+        case .signing: return tags.hasSigning
         case .quoteSent: return tags.hasPendingQuote
         case .firstCall: return tags.firstCallToDo
         }
@@ -280,6 +309,15 @@ public struct LeadTagsLoader: Sendable {
         guard dealID != nil || personID != nil else { return .none }
         // Affaire perdue : pas d'étiquette. Affaire gagnée : signée (date de gain), donc pas d'étiquette non plus.
         if let deal = item.deal, deal.status == "lost" { return .none }
+        // Analyse de Claude (champ « Devis en attente ») : elle fait foi pour les devis, devis par devis.
+        if let analysis = QuoteAnalysis(text: item.deal?.quoteAnalysis) {
+            var firstCall = false
+            if item.deal?.status != "won", analysis.entries(.signed).isEmpty {
+                let check = try await conversation(dealID: dealID, personID: personID, typeNames: typeNames)
+                firstCall = !check.spoke
+            }
+            return LeadTags(analysis: analysis, firstCallToDo: firstCall, now: now, timeZone: timeZone)
+        }
         if let deal = item.deal, deal.status == "won" {
             let day = deal.wonTime.flatMap(FrenchFormat.parseInstant).map { FrenchFormat.apiDay(from: $0, timeZone: timeZone) }
                 ?? FrenchFormat.apiDay(from: now, timeZone: timeZone)
@@ -288,25 +326,8 @@ public struct LeadTagsLoader: Sendable {
                 text: "Affaire marquée « Gagnée »"))
         }
 
-        var dealDone: [Activity] = []
-        if let dealID {
-            dealDone = try await client.activities(filter: "deal_id", id: dealID, limit: 200, done: true)
-        }
-        var spoke = dealDone.contains { LeadTagRules.isConversation($0, typeNames: typeNames) }
-        var personDone: [Activity] = []
-        if !spoke, let personID {
-            // Les journaux Aircall sont toujours liés à la personne, pas toujours à l'affaire.
-            personDone = try await client.activities(filter: "person_id", id: personID, limit: 200, done: true)
-            spoke = personDone.contains { LeadTagRules.isConversation($0, typeNames: typeNames) }
-        }
-        var dealNotes: [PipedriveNote]?
-        if !spoke, let dealID {
-            dealNotes = try await client.notes(filter: "deal_id", id: dealID, limit: 50)
-            spoke = dealNotes?.contains(where: \.isLeexi) ?? false
-        }
-        if !spoke, let personID {
-            spoke = try await client.notes(filter: "person_id", id: personID, limit: 50).contains(where: \.isLeexi)
-        }
+        let check = try await conversation(dealID: dealID, personID: personID, typeNames: typeNames)
+        let (spoke, dealDone, personDone, dealNotes) = (check.spoke, check.dealDone, check.personDone, check.dealNotes)
 
         // E-mails de l'affaire (sans bloquer les étiquettes si la lecture échoue).
         let ownDomain = myEmail.flatMap(DealMail.domain)
@@ -393,5 +414,30 @@ public struct LeadTagsLoader: Sendable {
         let signature = evidences.max { $0.day < $1.day }
         // Une signature (même ancienne) prouve qu'on s'est déjà parlé : pas de « 1er call à faire ».
         return LeadTags(quotes: quotes, firstCallToDo: !spoke && signature == nil, signature: signature)
+    }
+
+    /// Échange de vive voix déjà eu : activités terminées de l'affaire, puis de la personne, puis notes Leexi.
+    func conversation(dealID: Int?, personID: Int?, typeNames: [String: String]) async throws
+        -> (spoke: Bool, dealDone: [Activity], personDone: [Activity], dealNotes: [PipedriveNote]?) {
+        var dealDone: [Activity] = []
+        if let dealID {
+            dealDone = try await client.activities(filter: "deal_id", id: dealID, limit: 200, done: true)
+        }
+        var spoke = dealDone.contains { LeadTagRules.isConversation($0, typeNames: typeNames) }
+        var personDone: [Activity] = []
+        if !spoke, let personID {
+            // Les journaux Aircall sont toujours liés à la personne, pas toujours à l'affaire.
+            personDone = try await client.activities(filter: "person_id", id: personID, limit: 200, done: true)
+            spoke = personDone.contains { LeadTagRules.isConversation($0, typeNames: typeNames) }
+        }
+        var dealNotes: [PipedriveNote]?
+        if !spoke, let dealID {
+            dealNotes = try await client.notes(filter: "deal_id", id: dealID, limit: 50)
+            spoke = dealNotes?.contains(where: \.isLeexi) ?? false
+        }
+        if !spoke, let personID {
+            spoke = try await client.notes(filter: "person_id", id: personID, limit: 50).contains(where: \.isLeexi)
+        }
+        return (spoke, dealDone, personDone, dealNotes)
     }
 }

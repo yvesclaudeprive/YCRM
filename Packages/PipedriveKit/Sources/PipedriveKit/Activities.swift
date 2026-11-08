@@ -158,9 +158,11 @@ public struct DealSummary: Hashable, Sendable, Identifiable {
     public let wonTime: String?
     /// Champ d'affaire « Contrat signé le » (AAAA-MM-JJ), s'il existe dans le compte (rempli par ex. depuis l'yntranet).
     public let signedDate: String?
+    /// Champ d'affaire « Devis en attente » : analyse des devis écrite par Claude deux fois par jour (`QuoteAnalysis`).
+    public let quoteAnalysis: String?
 
     public init(id: Int, title: String, orgID: Int?, personID: Int?, score: Double?, status: String? = nil,
-                wonTime: String? = nil, signedDate: String? = nil) {
+                wonTime: String? = nil, signedDate: String? = nil, quoteAnalysis: String? = nil) {
         self.id = id
         self.title = title
         self.orgID = orgID
@@ -169,12 +171,13 @@ public struct DealSummary: Hashable, Sendable, Identifiable {
         self.status = status
         self.wonTime = wonTime
         self.signedDate = signedDate
+        self.quoteAnalysis = quoteAnalysis
     }
 
     /// Affaire en cours (ni gagnée ni perdue) ; vrai si le statut est inconnu.
     public var isOpen: Bool { status == nil || status == "open" }
 
-    init?(json: JSONValue, scoreCode: String?, signedCode: String? = nil) {
+    init?(json: JSONValue, scoreCode: String?, signedCode: String? = nil, analysisCode: String? = nil) {
         guard let id = json["id"].intValue else { return nil }
         var score: Double?
         if let scoreCode {
@@ -187,9 +190,15 @@ public struct DealSummary: Hashable, Sendable, Identifiable {
             signed = (raw.isNull ? json[signedCode].stringValue : (raw.stringValue ?? raw["value"].stringValue))
                 .flatMap { $0.isEmpty ? nil : $0 }
         }
+        var analysis: String?
+        if let analysisCode {
+            let raw = json["custom_fields"][analysisCode]
+            analysis = (raw.isNull ? json[analysisCode].stringValue : (raw.stringValue ?? raw["value"].stringValue))
+                .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        }
         self.init(id: id, title: json["title"].stringValue ?? "Affaire #\(id)", orgID: json["org_id"].intValue,
                   personID: json["person_id"].intValue, score: score, status: json["status"].stringValue,
-                  wonTime: json["won_time"].stringValue, signedDate: signed)
+                  wonTime: json["won_time"].stringValue, signedDate: signed, quoteAnalysis: analysis)
     }
 }
 

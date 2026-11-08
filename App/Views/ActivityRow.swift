@@ -11,8 +11,10 @@ enum ActivityAction {
     case newMail, replyMail, mailToSelf
     // Historique (fenêtres)
     case showHistory, showLeexi
-    /// Étiquette « Devis envoyé » touchée : détail des devis envoyés.
+    /// Étiquette « Devis envoyé » / « En signature » touchée, ou bouton « Analyse devis » : détail des devis.
     case showQuotes
+    /// Bouton « Note pour Claude » (bloc glissé vers la droite) : commentaire lu par l'analyse des devis.
+    case noteForClaude
     /// Bouton grisé touché : on explique pourquoi.
     case explain(String)
 }
@@ -139,21 +141,37 @@ struct ActivityRow: View {
         }
     }
 
-    /// Étiquettes pleines (texte blanc) : « Devis envoyé · il y a 5 j » (violet), « 1er call à faire » (rose).
+    /// Étiquettes pleines (texte blanc) : « En signature · il y a 2 j » (orange, la plus chaude),
+    /// « Devis envoyé · il y a 5 j » (violet), « 1er call à faire » (rose). Sur deux lignes si elles ne tiennent pas.
     private func tagsRow(_ tags: LeadTags) -> some View {
-        HStack(spacing: 6) {
-            if let label = tags.quoteSentLabel(timeZone: parisTimeZone) {
-                Button {
-                    perform(.showQuotes)
-                } label: {
-                    tagCapsule(label + "  ›", icon: "doc.text.fill", color: .purple)
-                }
-                .buttonStyle(PressableStyle())
-                .accessibilityHint("Voir le détail des devis envoyés")
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) { tagViews(tags) }
+            VStack(alignment: .leading, spacing: 6) { tagViews(tags) }
+        }
+    }
+
+    @ViewBuilder
+    private func tagViews(_ tags: LeadTags) -> some View {
+        if let label = tags.signingLabel(timeZone: parisTimeZone) {
+            Button {
+                perform(.showQuotes)
+            } label: {
+                tagCapsule(label + "  ›", icon: "signature", color: .signingOrange)
             }
-            if tags.firstCallToDo {
-                tagCapsule("1er call à faire", icon: "phone.fill", color: .pink)
+            .buttonStyle(PressableStyle())
+            .accessibilityHint("Voir les devis en signature")
+        }
+        if let label = tags.quoteSentLabel(timeZone: parisTimeZone) {
+            Button {
+                perform(.showQuotes)
+            } label: {
+                tagCapsule(label + "  ›", icon: "doc.text.fill", color: .purple)
             }
+            .buttonStyle(PressableStyle())
+            .accessibilityHint("Voir le détail des devis envoyés")
+        }
+        if tags.firstCallToDo {
+            tagCapsule("1er call à faire", icon: "phone.fill", color: .pink)
         }
     }
 
@@ -630,6 +648,8 @@ extension Color {
     static let pipedriveGreen = Color("PipedriveGreen")
     /// Orange des mots clés mis en évidence (même orange que la ligne Mails, lisible en texte).
     static let keywordOrange = Color(red: 0.93, green: 0.42, blue: 0.16)
+    /// Étiquette « En signature » : orange vif, plus chaud que le violet « Devis envoyé ».
+    static let signingOrange = Color(red: 0.96, green: 0.36, blue: 0.0)
 }
 
 /// Couleurs des 4 lignes (demande d'Yves du 07/11/2026) : actions en orange (appels, mails),

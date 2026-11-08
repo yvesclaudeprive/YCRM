@@ -38,6 +38,9 @@ struct ActivityListView: View {
     @State private var whatsappInstalled = true
     @State private var historySheet: HistoryRequest?
     @State private var quoteSheet: ActivityItem?
+    @State private var claudeNote: ActivityItem?
+    /// Bloc glissé vers la droite (boutons « Note pour Claude » / « Analyse devis » visibles).
+    @State private var swipedItemID: Int?
     @State private var explanation: String?
 
     private enum CallChannel {
@@ -67,15 +70,25 @@ struct ActivityListView: View {
                         sectionHeader(icon: "number.circle", text: "Sans score",
                                       count: feed.unscoredCount(upcoming: upcoming))
                     }
-                    ActivityRow(
-                        item: item,
-                        isBusy: busyItemIDs.contains(item.id),
-                        whatsappInstalled: whatsappInstalled,
-                        ownerName: item.activity.ownerID == session.userID ? nil : feed.userName(item.activity.ownerID),
-                        isAlternate: !index.isMultiple(of: 2),
-                        tags: feed.tags[item.id],
-                        perform: { action in handle(action, for: item) }
-                    )
+                    SwipeReveal(actions: swipeActions(for: item), isOpen: swipeBinding(for: item)) {
+                        ActivityRow(
+                            item: item,
+                            isBusy: busyItemIDs.contains(item.id),
+                            whatsappInstalled: whatsappInstalled,
+                            ownerName: item.activity.ownerID == session.userID ? nil : feed.userName(item.activity.ownerID),
+                            isAlternate: !index.isMultiple(of: 2),
+                            tags: feed.tags[item.id],
+                            perform: { action in handle(action, for: item) }
+                        )
+                    }
+                    .contextMenu {
+                        Button("Note pour Claude", systemImage: "bubble.left.and.text.bubble.right") {
+                            handle(.noteForClaude, for: item)
+                        }
+                        Button("Analyse des devis", systemImage: "doc.text.magnifyingglass") {
+                            handle(.showQuotes, for: item)
+                        }
+                    }
                     .onAppear { feed.loadMoreIfNeeded(after: item) }
                     .task(id: feed.tagsGeneration) { await feed.loadTags(for: item, session: session) }
                 }
@@ -121,8 +134,19 @@ struct ActivityListView: View {
             HistorySheet(request: request, feed: feed)
         }
         .sheet(item: $quoteSheet) { item in
-            QuoteSheet(item: item, tags: feed.tags[item.id] ?? .none) {
+            QuoteSheet(item: item, tags: feed.tags[item.id] ?? .none, openDeal: {
                 open(pipedriveLink(for: item), failure: "Aucune fiche Pipedrive liée à cette activité.")
+            }, writeNote: {
+                quoteSheet = nil
+                Task {
+                    try? await Task.sleep(for: .milliseconds(400))
+                    claudeNote = item
+                }
+            })
+        }
+        .sheet(item: $claudeNote) { item in
+            ClaudeNoteSheet(item: item) { text in
+                Task { await sendNoteForClaude(text, for: item) }
             }
         }
         .alert("Bouton indisponible", isPresented: explanationBinding, presenting: explanation) { _ in
@@ -332,6 +356,9 @@ struct ActivityListView: View {
             Task { await feed.loadHistory(for: item, session: session) }
         case .showQuotes:
             quoteSheet = item
+            Task { await feed.loadTags(for: item, session: session) }
+        case .noteForClaude:
+            claudeNote = item
         case .explain(let reason):
             explanation = reason
         case .openOrganization:
@@ -511,6 +538,43 @@ struct ActivityListView: View {
             })
             // Ensuite : fiche Pipedrive (affaire, sinon personne, sinon société).
             open(pipedriveLink(for: item), failure: "Aucune fiche Pipedrive liée à cette activité.")
+        } catch {
+            showError(error.localizedDescription)
+        }
+    }
+
+    // MARK: Glisser le bloc : « Note pour Claude », « Analyse devis »
+
+    private func swipeActions(for item: ActivityItem) -> [SwipeAction] {
+        [
+            SwipeAction(title: "Note pour\nClaude", icon: "bubble.left.and.text.bubble.right.fill", color: .purple) {
+                handle(.noteForClaude, for: item)
+            },
+            SwipeAction(title: "Analyse\ndevis", icon: "doc.text.magnifyingglass", color: .signingOrange) {
+                handle(.showQuotes, for: item)
+            },
+        ]
+    }
+
+    /// Un seul bloc ouvert à la fois.
+    private func swipeBinding(for item: ActivityItem) -> Binding<Bool> {
+        Binding(get: { swipedItemID == item.id }, set: { swipedItemID = $0 ? item.id : nil })
+    }
+
+    /// Enregistre la note sur l'affaire (sinon la personne, sinon la société), avec « Annuler » pendant 6 s.
+    private func sendNoteForClaude(_ text: String, for item: ActivityItem) async {
+        do {
+            let api = try session.makeClient()
+            let noteID = try await api.addNote(content: ClaudeNote.html(text), dealID: item.activity.dealID,
+                                               personID: item.person?.id ?? item.activity.personID, orgID: item.orgID)
+            show(Toast(message: "✅ Note pour Claude enregistrée (\(item.clientName)) : prise en compte à la prochaine analyse, vers 5h ou 13h.") {
+                do {
+                    try await session.makeClient().deleteNote(id: noteID)
+                    show(Toast(message: "Note annulée."))
+                } catch {
+                    showError(error.localizedDescription)
+                }
+            })
         } catch {
             showError(error.localizedDescription)
         }

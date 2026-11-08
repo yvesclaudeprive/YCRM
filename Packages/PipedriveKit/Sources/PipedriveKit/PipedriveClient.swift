@@ -169,13 +169,32 @@ public struct PipedriveClient: Sendable {
 
     // MARK: Affaires, personnes, sociétés (par lots de 100)
 
-    public func deals(ids: [Int], scoreCode: String?, signedCode: String? = nil) async throws -> [DealSummary] {
+    public func deals(ids: [Int], scoreCode: String?, signedCode: String? = nil,
+                      analysisCode: String? = nil) async throws -> [DealSummary] {
         var extra: [URLQueryItem] = []
-        let codes = [scoreCode, signedCode].compactMap { $0 }
+        let codes = [scoreCode, signedCode, analysisCode].compactMap { $0 }
         if !codes.isEmpty { extra.append(URLQueryItem(name: "custom_fields", value: codes.joined(separator: ","))) }
         return try await batch("/api/v2/deals", ids: ids, extra: extra).compactMap {
-            DealSummary(json: $0, scoreCode: scoreCode, signedCode: signedCode)
+            DealSummary(json: $0, scoreCode: scoreCode, signedCode: signedCode, analysisCode: analysisCode)
         }
+    }
+
+    /// Note sur une affaire (ou, sans affaire, sur la personne) : « Note pour Claude » écrite depuis l'app.
+    public func addNote(content: String, dealID: Int?, personID: Int?, orgID: Int?) async throws -> Int {
+        var body: [String: JSONValue] = ["content": .string(content)]
+        if let dealID { body["deal_id"] = .int(dealID) }
+        if dealID == nil, let personID { body["person_id"] = .int(personID) }
+        if dealID == nil, personID == nil, let orgID { body["org_id"] = .int(orgID) }
+        guard body.count > 1 else { throw PipedriveError.validation("Aucune affaire, personne ni société pour la note") }
+        let data = try JSONEncoder().encode(JSONValue.object(body))
+        let response = try await send("POST", "/api/v1/notes", body: data)
+        guard let id = response["data"]["id"].intValue else { throw PipedriveError.invalidResponse }
+        return id
+    }
+
+    /// Supprime une note (bouton « Annuler » juste après l'envoi).
+    public func deleteNote(id: Int) async throws {
+        _ = try await send("DELETE", "/api/v1/notes/\(id)")
     }
 
     public func persons(ids: [Int]) async throws -> [PersonContact] {
