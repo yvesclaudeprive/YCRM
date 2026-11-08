@@ -37,9 +37,7 @@ public struct ActivityFeedLoader: Sendable {
         var seen = Set<Int>()
         let activities = all.filter { filter.contains(day: $0.localDay(timeZone: timeZone)) && seen.insert($0.id).inserted }
         let fields = (try? await fieldsRequest) ?? []
-        let scoreCode = fields.first { Label.matches($0.name, Self.scoreFieldName) }?.code
-        let signedCode = fields.first { Label.matches($0.name, Self.signedFieldName) }?.code
-        let analysisCode = fields.first { Self.isQuoteAnalysisField($0.name) }?.code
+        let (scoreCode, signedCode, analysisCode) = Self.codes(in: fields)
 
         async let dealsRequest = client.deals(ids: activities.compactMap(\.dealID), scoreCode: scoreCode,
                                               signedCode: signedCode, analysisCode: analysisCode)
@@ -60,6 +58,21 @@ public struct ActivityFeedLoader: Sendable {
                                 person: personID.flatMap { persons[$0] }, deal: deal)
         }
         return ActivityItem.feedOrder(items, today: FrenchFormat.apiDay(from: now, timeZone: timeZone), timeZone: timeZone)
+    }
+
+    /// Codes des champs d'affaire lus par l'app (retrouvés par leur nom) : score, « Contrat signé le », analyse de Claude.
+    static func codes(in fields: [FieldDefinition]) -> (score: String?, signed: String?, analysis: String?) {
+        (fields.first { Label.matches($0.name, scoreFieldName) }?.code,
+         fields.first { Label.matches($0.name, signedFieldName) }?.code,
+         fields.first { isQuoteAnalysisField($0.name) }?.code)
+    }
+
+    /// Affaire relue dans Pipedrive, par exemple après une « Note pour Claude » : l'analyse de Claude a pu changer.
+    public func deal(id: Int) async throws -> DealSummary? {
+        let fields = (try? await client.dealFields()) ?? []
+        let (scoreCode, signedCode, analysisCode) = Self.codes(in: fields)
+        return try await client.deals(ids: [id], scoreCode: scoreCode, signedCode: signedCode,
+                                      analysisCode: analysisCode).first
     }
 }
 

@@ -245,6 +245,11 @@ public struct ActivityItem: Hashable, Sendable, Identifiable {
         self.deal = deal
     }
 
+    /// La même ligne avec l'affaire relue dans Pipedrive.
+    public func withDeal(_ deal: DealSummary?) -> ActivityItem {
+        ActivityItem(activity: activity, organizationName: organizationName, person: person, deal: deal)
+    }
+
     /// Nom utilisé dans « [NOMDUCLIENT] » : la société, sinon la personne, sinon l'affaire.
     public var clientName: String {
         organizationName ?? person?.name ?? deal?.title ?? "Sans société"

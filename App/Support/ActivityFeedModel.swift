@@ -108,15 +108,24 @@ final class ActivityFeedModel {
             let myID = try await session.ensureUserID()
             if ownerIDs.isEmpty { ownerIDs = [myID] }
             if users.isEmpty { users = (try? await api.users()) ?? [] }
+            let previousAnalysis = Dictionary(items.map { ($0.id, $0.deal?.quoteAnalysis ?? "") },
+                                              uniquingKeysWith: { first, _ in first })
             items = try await ActivityFeedLoader(client: api).load(ownerIDs: Array(ownerIDs), filter: filter,
                                                                    timeZone: parisTimeZone)
             visibleCount = Self.pageSize
             history = [:]
-            // Étiquettes récentes conservées (évite de tout recalculer à chaque rechargement).
+            // Étiquettes récentes conservées (évite de tout recalculer à chaque rechargement)…
             let freshSince = Date().addingTimeInterval(-Self.tagsLifetime)
             for (id, date) in tagsComputedAt where date < freshSince {
                 tags[id] = nil
                 tagsComputedAt[id] = nil
+            }
+            // … sauf si l'analyse de Claude de l'affaire a changé depuis (note traitée, passage de 5h17 / 13h17).
+            for item in items {
+                if let old = previousAnalysis[item.id], old != (item.deal?.quoteAnalysis ?? "") {
+                    tags[item.id] = nil
+                    tagsComputedAt[item.id] = nil
+                }
             }
             tagsGeneration += 1
             errorMessage = nil
@@ -265,6 +274,19 @@ final class ActivityFeedModel {
             }
         }
         if !Task.isCancelled { tagsProgress = nil }
+    }
+
+    /// Relit l'affaire dans Pipedrive (après une « Note pour Claude ») ; si l'analyse de Claude a changé, met à jour les
+    /// cartes de l'affaire et recalcule leurs étiquettes. Renvoie true si l'analyse a changé.
+    @discardableResult
+    func refreshDeal(for item: ActivityItem, session: AppSession) async -> Bool {
+        guard let dealID = item.activity.dealID,
+              let fresh = try? await ActivityFeedLoader(client: session.makeClient()).deal(id: dealID) else { return false }
+        let current = items.first { $0.activity.dealID == dealID }?.deal?.quoteAnalysis ?? ""
+        guard current != (fresh.quoteAnalysis ?? "") else { return false }
+        items = items.map { $0.activity.dealID == dealID ? $0.withDeal(fresh) : $0 }
+        invalidateTags(for: item)
+        return true
     }
 
     /// Après une alerte enregistrée ou annulée : recalcule les étiquettes des cartes du même contact / de la même affaire.

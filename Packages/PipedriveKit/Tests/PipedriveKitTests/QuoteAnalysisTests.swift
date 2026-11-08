@@ -187,6 +187,27 @@ final class QuoteAnalysisTests: XCTestCase {
         XCTAssertNil(empty.quoteAnalysis)
     }
 
+    /// Après une « Note pour Claude » : l'affaire est relue pour afficher la nouvelle analyse.
+    func testRefreshedDealCarriesNewAnalysis() async throws {
+        let code = String(repeating: "c", count: 40)
+        let transport = MockTransport([
+            "GET /api/v2/dealFields": .init(status: 200, body: """
+            {"success":true,"data":[{"field_name":"Devis en attente (claude)","field_code":"\(code)","field_type":"text","is_custom_field":true}],"additional_data":{"next_cursor":null}}
+            """),
+            "GET /api/v2/deals": .init(status: 200, body: """
+            {"success":true,"data":[{"id":100,"title":"Refonte","status":"open","custom_fields":{"\(code)":"ABANDONNÉS\\n• Refonte | 16/04/2026"}}],"additional_data":{"next_cursor":null}}
+            """),
+        ])
+        let deal = try await ActivityFeedLoader(client: client(transport)).deal(id: 100)
+        XCTAssertEqual(QuoteAnalysis(text: deal?.quoteAnalysis)?.entries(.abandoned).first?.title, "Refonte")
+        let recorded = await transport.recorded
+        XCTAssertEqual(query(try XCTUnwrap(recorded.last), "custom_fields"), code)
+        let old = item(DealSummary(id: 100, title: "Refonte", orgID: nil, personID: nil, score: nil, status: "open"))
+        XCTAssertNil(old.deal?.quoteAnalysis)
+        XCTAssertEqual(old.withDeal(deal).deal?.quoteAnalysis, deal?.quoteAnalysis)
+        XCTAssertEqual(old.withDeal(deal).id, old.id)
+    }
+
     func testAddNoteForClaude() async throws {
         let transport = MockTransport([
             "POST /api/v1/notes": .init(status: 201, body: #"{"success":true,"data":{"id":555}}"#),

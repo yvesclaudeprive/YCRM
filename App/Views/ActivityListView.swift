@@ -575,6 +575,14 @@ struct ActivityListView: View {
                     do { try await Task.sleep(for: .seconds(6.5)) } catch { return }
                     do {
                         try await trigger.fire(text: ClaudeTrigger.payload(noteID: noteID, dealID: dealID))
+                        // Claude traite la note en 30 s à 1 min : la carte se met à jour toute seule.
+                        for delay in [40.0, 40.0, 60.0] {
+                            try? await Task.sleep(for: .seconds(delay))
+                            if await feed.refreshDeal(for: item, session: session) {
+                                show(Toast(message: "✅ Claude a mis à jour l'analyse (\(item.clientName))."))
+                                break
+                            }
+                        }
                     } catch {
                         showError("Note enregistrée, mais Claude n'a pas pu être prévenu : \(error.localizedDescription) Il la lira à 5h17 ou 13h17.")
                     }
