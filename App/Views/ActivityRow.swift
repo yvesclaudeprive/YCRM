@@ -141,36 +141,14 @@ struct ActivityRow: View {
         }
     }
 
-    /// Étiquettes pleines (texte blanc) : « En signature · -2 j » (orange, la plus chaude),
-    /// « 2 devis envoyés · -5 j » (violet), « 1er call à faire » (rose). Sur deux lignes si elles ne tiennent pas.
-    /// Sous les étiquettes, le titre des devis concernés, sans avoir à toucher (demande d'Yves du 08/11/2026).
+    /// Étiquettes pleines (texte blanc), avec le nom du ou des devis dedans (demandes d'Yves du 08/11/2026) :
+    /// « En signature -2 j : TMA » (orange, la plus chaude), « Devis envoyé -5 j : Refonte du site » (violet),
+    /// « 1er call à faire » (rose). Les unes sous les autres si elles ne tiennent pas sur une ligne.
     private func tagsRow(_ tags: LeadTags) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 6) { tagViews(tags) }
-                VStack(alignment: .leading, spacing: 6) { tagViews(tags) }
-            }
-            if let titles = tags.signingTitles(timeZone: parisTimeZone) {
-                quoteTitles(titles, icon: "signature", color: .signingOrange)
-            }
-            if let titles = tags.quoteTitles(timeZone: parisTimeZone) {
-                quoteTitles(titles, icon: "doc.text", color: .purple)
-            }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) { tagViews(tags) }
+            VStack(alignment: .leading, spacing: 6) { tagViews(tags) }
         }
-    }
-
-    private func quoteTitles(_ text: String, icon: String, color: Color) -> some View {
-        Label {
-            Text(text)
-                .lineLimit(2)
-        } icon: {
-            Image(systemName: icon)
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(color)
-        .labelStyle(.titleAndIcon)
-        .contentShape(Rectangle())
-        .onTapGesture { perform(.showQuotes) }
     }
 
     @ViewBuilder
@@ -199,17 +177,18 @@ struct ActivityRow: View {
     }
 
     private func tagCapsule(_ text: String, icon: String, color: Color) -> some View {
-        HStack(spacing: 4) {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
             Image(systemName: icon)
             Text(text)
-                .lineLimit(1)
+                .lineLimit(3)
+                .multilineTextAlignment(.leading)
         }
         .font(.caption.weight(.bold))
         .foregroundStyle(.white)
         .padding(.horizontal, 9)
         .padding(.vertical, 4)
-        .background(Capsule().fill(color.gradient))
-        .fixedSize()
+        .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(color.gradient))
+        .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .combine)
     }
 

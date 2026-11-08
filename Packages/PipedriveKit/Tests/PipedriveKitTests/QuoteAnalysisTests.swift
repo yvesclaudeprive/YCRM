@@ -70,10 +70,9 @@ final class QuoteAnalysisTests: XCTestCase {
     func testTagsFromAnalysis() throws {
         let analysis = try XCTUnwrap(QuoteAnalysis(text: Self.sample))
         let tags = LeadTags(analysis: analysis, firstCallToDo: false, now: Self.now, timeZone: paris)
-        XCTAssertEqual(tags.signingLabel(now: Self.now, timeZone: paris), "En signature · -2 j")
-        XCTAssertEqual(tags.quoteSentLabel(now: Self.now, timeZone: paris), "2 devis envoyés · -5 j")
-        XCTAssertEqual(tags.signingTitles(now: Self.now, timeZone: paris), "Montée de version -2 j")
-        XCTAssertEqual(tags.quoteTitles(now: Self.now, timeZone: paris), "Audit sécurité -5 j · Refonte du site -206 j")
+        XCTAssertEqual(tags.signingLabel(now: Self.now, timeZone: paris), "En signature -2 j : Montée de version")
+        XCTAssertEqual(tags.quoteSentLabel(now: Self.now, timeZone: paris),
+                       "2 devis envoyés : Audit sécurité -5 j, Refonte du site -206 j")
         XCTAssertTrue(TagFilter.signing.matches(tags))
         XCTAssertTrue(TagFilter.quoteSent.matches(tags))
         XCTAssertFalse(tags.isSigned)
@@ -108,7 +107,7 @@ final class QuoteAnalysisTests: XCTestCase {
                                quoteAnalysis: "DEVIS ENVOYÉS\n• Refonte du site | 16/04/2026 | rien de signé")
         let tags = try await LeadTagsLoader(client: client(transport))
             .load(for: item(deal), typeNames: [:], timeZone: paris, now: Self.now, myEmail: "moi@example.com")
-        XCTAssertEqual(tags.quoteSentLabel(now: Self.now, timeZone: paris), "Devis envoyé · -206 j",
+        XCTAssertEqual(tags.quoteSentLabel(now: Self.now, timeZone: paris), "Devis envoyé -206 j : Refonte du site",
                        "devis de plus de 6 mois gardé : c'est Claude qui décide")
         XCTAssertFalse(tags.firstCallToDo)
         let paths = await transport.recorded.compactMap { $0.url?.path }
@@ -121,7 +120,7 @@ final class QuoteAnalysisTests: XCTestCase {
                                quoteAnalysis: "EN SIGNATURE\n• Refonte | 05/11/2026 | DocuSign envoyé\nSIGNÉS\n• TMA | 11/08/2026")
         let tags = try await LeadTagsLoader(client: client(transport))
             .load(for: item(deal), typeNames: [:], timeZone: paris, now: Self.now)
-        XCTAssertEqual(tags.signingLabel(now: Self.now, timeZone: paris), "En signature · -3 j")
+        XCTAssertEqual(tags.signingLabel(now: Self.now, timeZone: paris), "En signature -3 j : Refonte")
         XCTAssertFalse(tags.firstCallToDo)
         let count = await transport.recorded.count
         XCTAssertEqual(count, 0)

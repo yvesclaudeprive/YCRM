@@ -52,11 +52,11 @@ final class LeadTagsTests: XCTestCase {
     func testQuoteLabel() {
         let now = Date(timeIntervalSince1970: 1_794_135_600) // 08/11/2026 à 12:00
         XCTAssertEqual(LeadTags(quoteSentDay: "2026-11-03", firstCallToDo: false).quoteSentLabel(now: now, timeZone: paris),
-                       "Devis envoyé · -5 j")
+                       "Devis envoyé -5 j : Devis envoyé")
         XCTAssertEqual(LeadTags(quoteSentDay: "2026-11-07", firstCallToDo: false).quoteSentLabel(now: now, timeZone: paris),
-                       "Devis envoyé · -1 j")
+                       "Devis envoyé -1 j : Devis envoyé")
         XCTAssertEqual(LeadTags(quoteSentDay: "2026-11-08", firstCallToDo: false).quoteSentLabel(now: now, timeZone: paris),
-                       "Devis envoyé · auj.")
+                       "Devis envoyé auj. : Devis envoyé")
         XCTAssertNil(LeadTags.none.quoteSentLabel(now: now, timeZone: paris))
     }
 
@@ -97,8 +97,8 @@ final class LeadTagsTests: XCTestCase {
         XCTAssertEqual(tags.quotes.map(\.subject), ["Devis SEO mis à jour renvoyé", "Devis SEO envoyé"], "détail : le plus récent d'abord")
         XCTAssertEqual(tags.quotes.first?.dateText, "5 novembre")
         XCTAssertEqual(tags.quotes.first?.agoText(now: now, timeZone: paris), "il y a 3 j")
-        XCTAssertEqual(tags.quoteSentLabel(now: now, timeZone: paris), "2 devis envoyés · -3 j")
-        XCTAssertEqual(tags.quoteTitles(now: now, timeZone: paris), "Devis SEO mis à jour renvoyé -3 j · Devis SEO envoyé -5 j")
+        XCTAssertEqual(tags.quoteSentLabel(now: now, timeZone: paris),
+                       "2 devis envoyés : Devis SEO mis à jour renvoyé -3 j, Devis SEO envoyé -5 j")
 
         let recorded = await transport.recorded
         let first = try XCTUnwrap(recorded.first)
@@ -238,7 +238,8 @@ final class LeadTagsTests: XCTestCase {
             .load(for: item(), typeNames: names, timeZone: paris, now: now)
         XCTAssertNotNil(tags.signature, "la signature est connue…")
         XCTAssertFalse(tags.isSigned, "…mais un devis plus récent attend")
-        XCTAssertEqual(tags.quoteSentLabel(now: now, timeZone: paris), "2 devis envoyés · -5 j")
+        XCTAssertEqual(tags.quoteSentLabel(now: now, timeZone: paris),
+                       "2 devis envoyés : Devis montée de version envoyé -5 j, Maj devis envoyée -69 j")
     }
 
     func testSignedFieldFromDeal() async throws {
@@ -413,7 +414,7 @@ final class LeadTagsTests: XCTestCase {
         XCTAssertEqual(quote.note, "Pièce jointe : Proposition_AGENCE_pour_CLIENT-Mise_à_jour-9.2.pdf")
         XCTAssertEqual(tags.signature?.day, "2026-05-22", "signature du lot 2, avant le nouveau devis")
         XCTAssertFalse(tags.isSigned)
-        XCTAssertEqual(tags.quoteSentLabel(now: Self.now, timeZone: paris), "Devis envoyé · -5 j")
+        XCTAssertEqual(tags.quoteSentLabel(now: Self.now, timeZone: paris), "Devis envoyé -5 j : Montée de version - Proposition")
     }
 
     /// Même jour qu'une activité « Devis envoyé » : l'e-mail n'ajoute pas un deuxième devis.
