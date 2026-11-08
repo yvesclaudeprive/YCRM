@@ -8,6 +8,8 @@ import Foundation
 ///     • Montée de version | 14/10/2026 | DocuSign consulté par le client le 15/10/2026
 ///     DEVIS ENVOYÉS
 ///     • Refonte du site | 16/04/2026 | relancé le 03/11/2026, rien de signé
+///     DEVIS À FAIRE
+///     • Audit SEO | 28/10/2026 | demandé par le client en rendez-vous, promis pour le 15/11
 ///     SIGNÉS
 ///     • TMA | 11/08/2026 | projet signé (yntranet)
 ///     ABANDONNÉS
@@ -25,6 +27,8 @@ public struct QuoteAnalysis: Hashable, Sendable {
         case signing
         /// Devis envoyé, en attente de réponse.
         case sent
+        /// Le client attend un devis qui n'est pas encore parti (demande d'Yves du 08/11/2026) : étiquette « Devis à faire ».
+        case toDo
         case signed
         case abandoned
         /// Accès demandés au client (FTP, back-office, Google Ads, GA…) et pas encore reçus (demande d'Yves du
@@ -35,6 +39,7 @@ public struct QuoteAnalysis: Hashable, Sendable {
             switch self {
             case .signing: return "En signature"
             case .sent: return "Devis envoyés"
+            case .toDo: return "Devis à faire"
             case .signed: return "Signés"
             case .abandoned: return "Abandonnés"
             case .access: return "Accès en attente"
@@ -123,6 +128,7 @@ public struct QuoteAnalysis: Hashable, Sendable {
         "signes": .signed, "signe": .signed, "devis signes": .signed,
         "abandonnes": .abandoned, "abandonne": .abandoned, "perdus": .abandoned, "refuses": .abandoned,
         "acces en attente": .access, "demandes d'acces": .access, "acces demandes": .access,
+        "devis a faire": .toDo, "a faire": .toDo, "devis attendus": .toDo, "devis demandes": .toDo,
     ]
     static let commentHeaders: Set<String> = ["commentaires", "commentaire", "commentaires d'yves"]
     static let emptyMarkers: Set<String> = ["aucun", "aucune", "rien", "neant", "-"]

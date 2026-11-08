@@ -19,28 +19,32 @@ public struct LeadTags: Hashable, Sendable {
     public let analysis: QuoteAnalysis?
     /// Accès demandés au client et pas encore reçus, d'après l'analyse de Claude (étiquette « Accès »).
     public let access: [QuoteSent]
+    /// Devis que le client attend et qui ne sont pas encore partis, d'après l'analyse de Claude (« Devis à faire »).
+    public let toDo: [QuoteSent]
 
     public init(quotes: [QuoteSent], firstCallToDo: Bool, signature: SignatureEvidence? = nil, signing: [QuoteSent] = [],
-                analysis: QuoteAnalysis? = nil, access: [QuoteSent] = []) {
+                analysis: QuoteAnalysis? = nil, access: [QuoteSent] = [], toDo: [QuoteSent] = []) {
         self.quotes = quotes
         self.firstCallToDo = firstCallToDo
         self.signature = signature
         self.signing = signing
         self.analysis = analysis
         self.access = access
+        self.toDo = toDo
     }
 
     /// Étiquettes tirées de l'analyse de Claude : « En signature » et « Devis envoyé » devis par devis.
     public init(analysis: QuoteAnalysis, firstCallToDo: Bool, now: Date = Date(), timeZone: TimeZone) {
         self.init(quotes: analysis.quotes(.sent, now: now, timeZone: timeZone), firstCallToDo: firstCallToDo,
                   signing: analysis.quotes(.signing, now: now, timeZone: timeZone), analysis: analysis,
-                  access: analysis.quotes(.access, now: now, timeZone: timeZone))
+                  access: analysis.quotes(.access, now: now, timeZone: timeZone),
+                  toDo: analysis.quotes(.toDo, now: now, timeZone: timeZone))
     }
 
     /// Signé : une preuve de signature datée du dernier devis envoyé ou après (un devis plus récent repasse en « envoyé »).
     /// Avec l'analyse de Claude : plus rien en attente et au moins un devis signé.
     public var isSigned: Bool {
-        if let analysis { return quotes.isEmpty && signing.isEmpty && !analysis.entries(.signed).isEmpty }
+        if let analysis { return quotes.isEmpty && signing.isEmpty && toDo.isEmpty && !analysis.entries(.signed).isEmpty }
         guard let signature else { return false }
         guard let quoteDay = quoteSentDay else { return true }
         return signature.day >= quoteDay
@@ -70,7 +74,15 @@ public struct LeadTags: Hashable, Sendable {
     /// Accès demandés au client et pas encore reçus : étiquette bleue « Accès ».
     public var hasAccessPending: Bool { !access.isEmpty }
 
-    public var isEmpty: Bool { !hasPendingQuote && !hasSigning && !hasAccessPending && !firstCallToDo }
+    /// Devis attendu par le client et pas encore envoyé : étiquette violette « Devis à faire ».
+    public var hasQuoteToDo: Bool { !toDo.isEmpty }
+
+    public var isEmpty: Bool { !hasPendingQuote && !hasSigning && !hasQuoteToDo && !hasAccessPending && !firstCallToDo }
+
+    /// Lignes de l'étiquette « Devis à faire » : « Devis à faire - Audit SEO - 11j » (depuis la demande du client).
+    public func toDoLines(now: Date = Date(), timeZone: TimeZone) -> [TagLine] {
+        Self.lines(prefix: "Devis à faire", toDo, now: now, timeZone: timeZone)
+    }
 
     /// Lignes de l'étiquette « Accès » : « Accès - FTP + back-office - 122j ».
     public func accessLines(now: Date = Date(), timeZone: TimeZone) -> [TagLine] {
@@ -340,7 +352,7 @@ extension LeadTagRules {
 
 /// Filtre « Étiquettes » de la liste (demande d'Yves du 08/11/2026).
 public enum TagFilter: String, CaseIterable, Sendable, Identifiable {
-    case all, signing, quoteSent, access, firstCall
+    case all, signing, quoteSent, quoteToDo, access, firstCall
 
     public var id: String { rawValue }
 
@@ -349,6 +361,7 @@ public enum TagFilter: String, CaseIterable, Sendable, Identifiable {
         case .all: return "Toutes"
         case .signing: return "En signature"
         case .quoteSent: return "Devis envoyé"
+        case .quoteToDo: return "Devis à faire"
         case .access: return "Accès en attente"
         case .firstCall: return "1er call à faire"
         }
@@ -359,6 +372,7 @@ public enum TagFilter: String, CaseIterable, Sendable, Identifiable {
         case .all: return true
         case .signing: return tags.hasSigning
         case .quoteSent: return tags.hasPendingQuote
+        case .quoteToDo: return tags.hasQuoteToDo
         case .access: return tags.hasAccessPending
         case .firstCall: return tags.firstCallToDo
         }

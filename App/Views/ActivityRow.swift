@@ -163,6 +163,16 @@ struct ActivityRow: View {
             .buttonStyle(PressableStyle())
             .accessibilityHint("Voir les devis en signature")
         }
+        let toDo = tags.toDoLines(timeZone: parisTimeZone)
+        if !toDo.isEmpty {
+            Button {
+                perform(.showQuotes)
+            } label: {
+                linesCapsule(toDo, icon: "square.and.pencil", color: .toDoPurple)
+            }
+            .buttonStyle(PressableStyle())
+            .accessibilityHint("Voir les devis attendus par le client")
+        }
         let quotes = tags.quoteLines(timeZone: parisTimeZone)
         if !quotes.isEmpty {
             Button {
@@ -693,6 +703,8 @@ extension Color {
     static let signingOrange = Color(red: 0.96, green: 0.36, blue: 0.0)
     /// Étiquette « Accès » (accès demandés au client, pas encore reçus).
     static let accessBlue = Color(red: 0.05, green: 0.42, blue: 0.85)
+    /// Étiquette « Devis à faire » (le client attend un devis pas encore envoyé).
+    static let toDoPurple = Color(red: 0.50, green: 0.22, blue: 0.84)
 }
 
 /// Couleurs des 4 lignes (demande d'Yves du 07/11/2026) : actions en orange (appels, mails),

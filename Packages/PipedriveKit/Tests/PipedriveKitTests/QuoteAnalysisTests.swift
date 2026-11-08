@@ -62,6 +62,24 @@ final class QuoteAnalysisTests: XCTestCase {
         XCTAssertFalse(TagFilter.quoteSent.matches(tags))
     }
 
+    func testQuoteToDo() throws {
+        let text = "DEVIS À FAIRE\n• Montée de version PrestaShop | 28/10/2026 | demandé en rendez-vous, promis pour le 15/11\n" +
+            "ACCÈS EN ATTENTE\n• FTP | 09/07/2026 | demandé\nAnalyse Claude du 08/11/2026 à 16:00"
+        let analysis = try XCTUnwrap(QuoteAnalysis(text: text))
+        XCTAssertEqual(analysis.entries(.toDo).map(\.title), ["Montée de version PrestaShop"])
+        let tags = LeadTags(analysis: analysis, firstCallToDo: false, now: Self.now, timeZone: paris)
+        XCTAssertTrue(tags.hasQuoteToDo)
+        XCTAssertFalse(tags.hasPendingQuote, "un devis à faire n'est pas un devis envoyé")
+        XCTAssertFalse(tags.isEmpty)
+        XCTAssertFalse(tags.isSigned)
+        XCTAssertEqual(tags.toDoLines(now: Self.now, timeZone: paris).map(\.text), ["Devis à faire - MEV PrestaShop - 11j"])
+        XCTAssertTrue(TagFilter.quoteToDo.matches(tags))
+        XCTAssertFalse(TagFilter.quoteSent.matches(tags))
+        XCTAssertTrue(Set<TagFilter>([.quoteToDo, .firstCall]).matches(tags))
+        XCTAssertEqual(Set<TagFilter>([.quoteToDo, .signing]).label, "En signature ou Devis à faire")
+        XCTAssertEqual(QuoteAnalysis.Status.toDo.title, "Devis à faire")
+    }
+
     func testShortNamesInTags() throws {
         XCTAssertEqual(LeadTags.shortTitle("Google Analytics 4 + Google Search Console"), "GA4 + GSC")
         XCTAssertEqual(LeadTags.shortTitle("google analytics, search console et Google Ads"), "GA4, GSC et Google Ads")

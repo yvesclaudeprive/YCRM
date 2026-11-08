@@ -63,6 +63,7 @@ struct QuoteSheet: View {
 
     private var title: String {
         if tags.hasSigning { return "En signature" }
+        if tags.quotes.isEmpty && tags.hasQuoteToDo { return "Devis à faire" }
         if tags.quotes.isEmpty && tags.hasAccessPending { return "Accès en attente" }
         if tags.isSigned { return "Devis signé" }
         if tags.quotes.count > 1 { return "\(tags.quotes.count) devis envoyés" }
@@ -110,6 +111,7 @@ struct QuoteSheet: View {
         switch status {
         case .signing: return .signingOrange
         case .sent: return .yateoRed
+        case .toDo: return .toDoPurple
         case .signed: return .green
         case .abandoned: return .gray
         case .access: return .accessBlue
@@ -120,6 +122,7 @@ struct QuoteSheet: View {
         switch status {
         case .signing: return "signature"
         case .sent: return "doc.text.fill"
+        case .toDo: return "square.and.pencil"
         case .signed: return "checkmark.seal.fill"
         case .abandoned: return "xmark.circle.fill"
         case .access: return "key.fill"
