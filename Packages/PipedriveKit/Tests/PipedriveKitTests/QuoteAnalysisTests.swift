@@ -68,6 +68,9 @@ final class QuoteAnalysisTests: XCTestCase {
         XCTAssertEqual(LeadTags.shortTitle("Serach Console"), "GSC")
         XCTAssertEqual(LeadTags.shortTitle("GA 4"), "GA4")
         XCTAssertEqual(LeadTags.shortTitle("Adobe Analytics"), "Adobe Analytics")
+        XCTAssertEqual(LeadTags.shortTitle("Montée de version PrestaShop 9.2"), "MEV PrestaShop 9.2")
+        XCTAssertEqual(LeadTags.shortTitle("Refonte ou montee de version"), "Refonte ou MEV")
+        XCTAssertEqual(LeadTags.shortTitle("Montées de versions"), "MEV")
         let text = "ACCÈS EN ATTENTE\n• Google Analytics + Search Console | 09/07/2026 | demandés\nAnalyse Claude du 08/11/2026 à 16:00"
         let tags = LeadTags(analysis: try XCTUnwrap(QuoteAnalysis(text: text)), firstCallToDo: false, now: Self.now, timeZone: paris)
         XCTAssertEqual(tags.accessLines(now: Self.now, timeZone: paris).map(\.text), ["Accès - GA4 + GSC - 122j"])

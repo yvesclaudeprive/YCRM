@@ -105,7 +105,8 @@ public struct LeadTags: Hashable, Sendable {
     }
 
     /// Noms courts dans les étiquettes, pour gagner de la place (demande d'Yves du 08/11/2026) :
-    /// « Google Analytics (4) » → « GA4 », « (Google) Search Console » → « GSC ».
+    /// « Google Analytics (4) » → « GA4 », « (Google) Search Console » → « GSC », « montée de version » → « MEV ».
+    /// La fenêtre de détail garde les noms longs.
     public static func shortTitle(_ title: String) -> String {
         var text = title
         for (pattern, short) in shortNames {
@@ -118,6 +119,7 @@ public struct LeadTags: Hashable, Sendable {
         (#"\bgoogle[\s-]+analytics(\s*4)?\b"#, "GA4"),
         (#"\bga\s+4\b"#, "GA4"),
         (#"\b(google[\s-]+)?se(ar|ra)ch[\s-]+console\b"#, "GSC"),
+        (#"\bmont(é|e)es?\s+(de\s+)?versions?\b"#, "MEV"),
     ]
 
     /// Texte de l'étiquette « En signature » (une ligne par devis).
