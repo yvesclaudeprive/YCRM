@@ -57,7 +57,7 @@ final class QuoteAnalysisTests: XCTestCase {
         XCTAssertTrue(tags.hasAccessPending)
         XCTAssertFalse(tags.isEmpty)
         XCTAssertFalse(tags.hasPendingQuote, "un accès n'est pas un devis")
-        XCTAssertEqual(tags.accessLines(now: Self.now, timeZone: paris).map(\.text), ["Accès - FTP + back-office - 122j"])
+        XCTAssertEqual(tags.accessLines(now: Self.now, timeZone: paris).map(\.text), ["Accès - FTP + BO - 122j"], "back-office raccourci en BO dans l'étiquette")
         XCTAssertTrue(TagFilter.access.matches(tags))
         XCTAssertFalse(TagFilter.quoteSent.matches(tags))
     }

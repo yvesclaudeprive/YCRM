@@ -120,7 +120,7 @@ public struct LeadTags: Hashable, Sendable {
         Self.lines(prefix: "Devis à faire", toDo, now: now, timeZone: timeZone)
     }
 
-    /// Lignes de l'étiquette « Accès » : « Accès - FTP + back-office - 122j ».
+    /// Lignes de l'étiquette « Accès » : « Accès - FTP + BO - 122j ».
     public func accessLines(now: Date = Date(), timeZone: TimeZone) -> [TagLine] {
         Self.lines(prefix: "Accès", access, now: now, timeZone: timeZone)
     }
