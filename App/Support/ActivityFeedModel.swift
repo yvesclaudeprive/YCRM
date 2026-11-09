@@ -278,6 +278,19 @@ final class ActivityFeedModel {
         if !Task.isCancelled { tagsProgress = nil }
     }
 
+    /// Alerte décalée (bouton « Décaler ») : nouvelle date dans la liste, retri (retards / jour / à venir), et retrait
+    /// si elle sort du filtre de dates choisi.
+    func replaceActivity(_ activity: Activity) {
+        let today = FrenchFormat.apiDay(from: Date(), timeZone: parisTimeZone)
+        let updated = items.compactMap { item -> ActivityItem? in
+            guard item.id == activity.id else { return item }
+            guard filter.contains(day: activity.localDay(timeZone: parisTimeZone)) else { return nil }
+            return ActivityItem(activity: activity, organizationName: item.organizationName, person: item.person,
+                                deal: item.deal)
+        }
+        items = ActivityItem.feedOrder(updated, today: today, timeZone: parisTimeZone)
+    }
+
     /// Relit l'affaire dans Pipedrive (après une « Note pour Claude ») ; si l'analyse de Claude a changé, met à jour les
     /// cartes de l'affaire et recalcule leurs étiquettes. Renvoie true si l'analyse a changé.
     @discardableResult

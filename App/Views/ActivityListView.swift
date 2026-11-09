@@ -39,6 +39,7 @@ struct ActivityListView: View {
     @State private var historySheet: HistoryRequest?
     @State private var quoteSheet: ActivityItem?
     @State private var claudeNote: ActivityItem?
+    @State private var rescheduleItem: ActivityItem?
     /// Bloc glissé vers la droite (boutons « Note pour Claude » / « Analyse devis » visibles).
     @State private var swipedItemID: Int?
     @State private var explanation: String?
@@ -143,6 +144,11 @@ struct ActivityListView: View {
                     claudeNote = item
                 }
             })
+        }
+        .sheet(item: $rescheduleItem) { item in
+            RescheduleSheet(item: item) { day, time in
+                Task { await reschedule(item, day: day, parisTime: time) }
+            }
         }
         .sheet(item: $claudeNote) { item in
             ClaudeNoteSheet(item: item) { text in
@@ -359,6 +365,8 @@ struct ActivityListView: View {
             Task { await feed.loadTags(for: item, session: session) }
         case .noteForClaude:
             claudeNote = item
+        case .reschedule:
+            rescheduleItem = item
         case .explain(let reason):
             explanation = reason
         case .openOrganization:
@@ -594,6 +602,32 @@ struct ActivityListView: View {
                 do {
                     try await session.makeClient().deleteNote(id: noteID)
                     show(Toast(message: "Note annulée."))
+                } catch {
+                    showError(error.localizedDescription)
+                }
+            })
+        } catch {
+            showError(error.localizedDescription)
+        }
+    }
+
+    /// Bouton « Décaler » : nouvelle échéance dans Pipedrive (heure de Paris convertie en UTC), carte déplacée tout de
+    /// suite dans la liste, « Annuler » 6 s remet l'ancienne date.
+    private func reschedule(_ item: ActivityItem, day: String, parisTime: String?) async {
+        let old = item.activity
+        let due = Reschedule.due(day: day, parisTime: parisTime, timeZone: parisTimeZone)
+        busyItemIDs.insert(item.id)
+        defer { busyItemIDs.remove(item.id) }
+        do {
+            try await session.makeClient().rescheduleActivity(id: old.id, dueDate: due.date, dueTime: due.time)
+            let moved = old.withDue(date: due.date, time: due.time)
+            feed.replaceActivity(moved)
+            show(Toast(message: "✅ Alerte décalée au \(moved.displayDate) (\(item.clientName))") {
+                do {
+                    try await session.makeClient().rescheduleActivity(id: old.id, dueDate: old.dueDate ?? due.date,
+                                                                      dueTime: old.dueTime)
+                    feed.replaceActivity(old)
+                    show(Toast(message: "Date remise au \(old.displayDate)."))
                 } catch {
                     showError(error.localizedDescription)
                 }

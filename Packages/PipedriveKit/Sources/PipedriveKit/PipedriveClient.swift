@@ -162,6 +162,14 @@ public struct PipedriveClient: Sendable {
         _ = try await send("DELETE", "/api/v2/activities/\(id)")
     }
 
+    /// Décale une alerte (bouton « Décaler ») : nouvelle échéance au format Pipedrive (jour et heure en UTC ;
+    /// sans heure, l'heure est effacée).
+    public func rescheduleActivity(id: Int, dueDate: String, dueTime: String?) async throws {
+        let body: [String: JSONValue] = ["due_date": .string(dueDate), "due_time": dueTime.map(JSONValue.string) ?? .null]
+        let data = try JSONEncoder().encode(JSONValue.object(body))
+        _ = try await send("PATCH", "/api/v2/activities/\(id)", body: data)
+    }
+
     public func activityTypes() async throws -> [ActivityType] {
         let response = try await send("GET", "/api/v1/activityTypes")
         return (response["data"].arrayValue ?? []).compactMap(ActivityType.init(json:))
