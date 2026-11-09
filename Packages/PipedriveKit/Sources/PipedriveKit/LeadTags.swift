@@ -166,6 +166,10 @@ public struct LeadTags: Hashable, Sendable {
     static let shortNames: [(String, String)] = [
         (#"\bgoogle[\s-]+analytics(\s*4)?\b"#, "GA4"),
         (#"\bga\s+4\b"#, "GA4"),
+        // « GA » seul = Google Analytics = GA4 (demande d'Yves du 09/11/2026) ; « GA4 » reste tel quel.
+        (#"\bga\b(?!\s*-?4)"#, "GA4"),
+        // « Back-office » = « BO » (demande d'Yves du 09/11/2026).
+        (#"\bback[\s-]*offices?\b"#, "BO"),
         (#"\b(google[\s-]+)?se(ar|ra)ch[\s-]+console\b"#, "GSC"),
         (#"\bmont(é|e)es?\s+(de\s+)?versions?\b"#, "MEV"),
     ]
