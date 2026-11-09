@@ -530,6 +530,8 @@ struct PressableStyle: ButtonStyle {
 struct HistoryCard: View {
     let color: Color
     let icon: String
+    /// Deuxième icône, juste à côté de la première (« Répondeur + Msg vocal » : téléphone barré + bande).
+    var secondIcon: String? = nil
     let badge: String
     let date: String
     let title: String?
@@ -594,6 +596,9 @@ struct HistoryCard: View {
         HStack(spacing: 6) {
             HStack(spacing: 3) {
                 GlyphIcon(name: icon, size: 11)
+                if let secondIcon {
+                    GlyphIcon(name: secondIcon, size: 11)
+                }
                 Text(badge)
             }
             .font(.caption2.weight(.bold))
