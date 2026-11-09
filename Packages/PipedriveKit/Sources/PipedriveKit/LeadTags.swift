@@ -672,14 +672,21 @@ public struct UpcomingMeeting: Hashable, Sendable {
 
     /// Rendez-vous pas encore passés, le plus proche d'abord, sans doublon (même jour et même heure).
     public static func upcoming(_ meetings: [UpcomingMeeting], now: Date = Date(), timeZone: TimeZone) -> [UpcomingMeeting] {
+        var dated: [(meeting: UpcomingMeeting, instant: Date)] = []
+        for meeting in meetings {
+            if let instant = meeting.instant(timeZone: timeZone), instant >= now { dated.append((meeting, instant)) }
+        }
+        // Même moment : celui qui a un lien Google Agenda d'abord (c'est lui qui reste).
+        dated.sort { (a: (meeting: UpcomingMeeting, instant: Date), b: (meeting: UpcomingMeeting, instant: Date)) -> Bool in
+            if a.instant != b.instant { return a.instant < b.instant }
+            return a.meeting.link != nil && b.meeting.link == nil
+        }
         var seen = Set<String>()
-        return meetings
-            .compactMap { meeting in meeting.instant(timeZone: timeZone).map { (meeting, $0) } }
-            .filter { $0.1 >= now }
-            // Même moment : celui qui a un lien Google Agenda d'abord (c'est lui qui reste).
-            .sorted { $0.1 != $1.1 ? $0.1 < $1.1 : ($0.0.link != nil && $1.0.link == nil) }
-            .map(\.0)
-            .filter { seen.insert("\($0.day) \($0.time ?? "")").inserted }
+        var result: [UpcomingMeeting] = []
+        for entry in dated where seen.insert("\(entry.meeting.day) \(entry.meeting.time ?? "")").inserted {
+            result.append(entry.meeting)
+        }
+        return result
     }
 
     /// « jeu. 12 novembre à 14:00 ».
