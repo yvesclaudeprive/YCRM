@@ -78,6 +78,11 @@ public enum Reschedule {
             result.append(RescheduleChoice(id: "meeting", title: "Jour du RDV",
                                            day: meeting.day, dateText: meeting.time.map { "\(date) · RDV à \($0)" } ?? date))
         }
+        // « Aujourd'hui » toujours proposé (demande d'Yves du 09/11/2026), même un week-end.
+        if seen.insert(todayText).inserted {
+            result.append(RescheduleChoice(id: "today", title: "Aujourd'hui", day: todayText,
+                                           dateText: dateText(todayText, now: now, timeZone: timeZone)))
+        }
         for (id, title, target) in raw {
             let workday = Self.workday(target, calendar: calendar)
             let day = FrenchFormat.apiDay(from: workday, timeZone: timeZone)
@@ -85,6 +90,12 @@ public enum Reschedule {
             result.append(RescheduleChoice(id: id, title: title, day: day, dateText: dateText(day, now: now, timeZone: timeZone)))
         }
         return result
+    }
+
+    /// Choix sélectionné à l'ouverture : le jour du rendez-vous s'il y en a un, sinon le premier jour après
+    /// aujourd'hui (« Demain » en général : on décale rarement à aujourd'hui).
+    public static func defaultChoice(_ choices: [RescheduleChoice]) -> RescheduleChoice? {
+        choices.first { $0.id == "meeting" } ?? choices.first { $0.id != "today" } ?? choices.first
     }
 
     /// Samedi ou dimanche → lundi suivant.

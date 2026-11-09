@@ -155,7 +155,7 @@ struct RescheduleSheet: View {
 
     private func setUp() {
         choices = Reschedule.choices(timeZone: parisTimeZone, meeting: meeting)
-        if let first = choices.first {
+        if let first = Reschedule.defaultChoice(choices) {
             selectedChoice = first.id
             date = FrenchFormat.date(fromAPIDay: first.day, timeZone: parisTimeZone) ?? Date()
         }
