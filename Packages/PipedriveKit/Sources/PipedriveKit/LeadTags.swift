@@ -21,9 +21,13 @@ public struct LeadTags: Hashable, Sendable {
     public let access: [QuoteSent]
     /// Devis que le client attend et qui ne sont pas encore partis, d'après l'analyse de Claude (« Devis à faire »).
     public let toDo: [QuoteSent]
+    /// Rendez-vous à venir avec le contact (Google Agenda via l'analyse de Claude, ou activité Pipedrive de type
+    /// rendez-vous), le plus proche d'abord ; les rendez-vous passés n'y sont jamais.
+    public let meetings: [UpcomingMeeting]
 
     public init(quotes: [QuoteSent], firstCallToDo: Bool, signature: SignatureEvidence? = nil, signing: [QuoteSent] = [],
-                analysis: QuoteAnalysis? = nil, access: [QuoteSent] = [], toDo: [QuoteSent] = []) {
+                analysis: QuoteAnalysis? = nil, access: [QuoteSent] = [], toDo: [QuoteSent] = [],
+                meetings: [UpcomingMeeting] = []) {
         self.quotes = quotes
         self.firstCallToDo = firstCallToDo
         self.signature = signature
@@ -31,6 +35,7 @@ public struct LeadTags: Hashable, Sendable {
         self.analysis = analysis
         self.access = access
         self.toDo = toDo
+        self.meetings = meetings
     }
 
     /// Étiquettes tirées de l'analyse de Claude : « En signature » et « Devis envoyé » devis par devis.
@@ -38,7 +43,18 @@ public struct LeadTags: Hashable, Sendable {
         self.init(quotes: analysis.quotes(.sent, now: now, timeZone: timeZone), firstCallToDo: firstCallToDo,
                   signing: analysis.quotes(.signing, now: now, timeZone: timeZone), analysis: analysis,
                   access: analysis.quotes(.access, now: now, timeZone: timeZone),
-                  toDo: analysis.quotes(.toDo, now: now, timeZone: timeZone))
+                  toDo: analysis.quotes(.toDo, now: now, timeZone: timeZone),
+                  meetings: UpcomingMeeting.upcoming(analysis.entries(.meeting).compactMap {
+                      UpcomingMeeting(entry: $0, timeZone: timeZone)
+                  }, now: now, timeZone: timeZone))
+    }
+
+    /// Les mêmes étiquettes avec d'autres rendez-vous à venir (activités Pipedrive de la liste), sans doublon.
+    public func adding(meetings more: [UpcomingMeeting], now: Date = Date(), timeZone: TimeZone) -> LeadTags {
+        guard !more.isEmpty else { return self }
+        return LeadTags(quotes: quotes, firstCallToDo: firstCallToDo, signature: signature, signing: signing,
+                        analysis: analysis, access: access, toDo: toDo,
+                        meetings: UpcomingMeeting.upcoming(meetings + more, now: now, timeZone: timeZone))
     }
 
     /// Signé : une preuve de signature datée du dernier devis envoyé ou après (un devis plus récent repasse en « envoyé »).
@@ -77,7 +93,20 @@ public struct LeadTags: Hashable, Sendable {
     /// Devis attendu par le client et pas encore envoyé : étiquette violette « Devis à faire ».
     public var hasQuoteToDo: Bool { !toDo.isEmpty }
 
-    public var isEmpty: Bool { !hasPendingQuote && !hasSigning && !hasQuoteToDo && !hasAccessPending && !firstCallToDo }
+    /// Rendez-vous à venir avec le contact : étiquette verte « RDV à venir ».
+    public var hasUpcomingMeeting: Bool { !meetings.isEmpty }
+
+    public var isEmpty: Bool {
+        !hasPendingQuote && !hasSigning && !hasQuoteToDo && !hasAccessPending && !firstCallToDo && !hasUpcomingMeeting
+    }
+
+    /// Étiquette « RDV à venir - jeu. 12 novembre à 14:00 - dans 3j » : le prochain rendez-vous seulement (il peut
+    /// être passé entre-temps : rien alors).
+    public func meetingLine(now: Date = Date(), timeZone: TimeZone) -> TagLine? {
+        guard let next = UpcomingMeeting.upcoming(meetings, now: now, timeZone: timeZone).first else { return nil }
+        return TagLine(prefix: "RDV à venir", title: next.dateText(now: now, timeZone: timeZone),
+                       age: next.countdown(now: now, timeZone: timeZone))
+    }
 
     /// Lignes de l'étiquette « Devis à faire » : « Devis à faire - Audit SEO - 11j » (depuis la demande du client).
     public func toDoLines(now: Date = Date(), timeZone: TimeZone) -> [TagLine] {
@@ -352,7 +381,7 @@ extension LeadTagRules {
 
 /// Filtre « Étiquettes » de la liste (demande d'Yves du 08/11/2026).
 public enum TagFilter: String, CaseIterable, Sendable, Identifiable {
-    case all, signing, quoteSent, quoteToDo, access, firstCall
+    case all, signing, quoteSent, quoteToDo, access, meeting, firstCall
 
     public var id: String { rawValue }
 
@@ -363,6 +392,7 @@ public enum TagFilter: String, CaseIterable, Sendable, Identifiable {
         case .quoteSent: return "Devis envoyé"
         case .quoteToDo: return "Devis à faire"
         case .access: return "Accès en attente"
+        case .meeting: return "RDV à venir"
         case .firstCall: return "1er call à faire"
         }
     }
@@ -374,6 +404,7 @@ public enum TagFilter: String, CaseIterable, Sendable, Identifiable {
         case .quoteSent: return tags.hasPendingQuote
         case .quoteToDo: return tags.hasQuoteToDo
         case .access: return tags.hasAccessPending
+        case .meeting: return tags.hasUpcomingMeeting
         case .firstCall: return tags.firstCallToDo
         }
     }
@@ -542,5 +573,89 @@ public struct LeadTagsLoader: Sendable {
             spoke = try await client.notes(filter: "person_id", id: personID, limit: 50).contains(where: \.isLeexi)
         }
         return (spoke, dealDone, personDone, dealNotes)
+    }
+}
+
+/// Rendez-vous à venir avec le contact (demande d'Yves du 09/11/2026 : « des fois j'ai une alerte et j'oublie que j'ai un
+/// rendez-vous à venir »). Trouvé dans Google Agenda par l'analyse de Claude (section `RDV À VENIR`), ou dans les
+/// activités Pipedrive de type rendez-vous (agenda synchronisé, « meeting »).
+public struct UpcomingMeeting: Hashable, Sendable {
+    public enum Source: String, Hashable, Sendable {
+        case calendar
+        case pipedrive
+    }
+
+    public let title: String
+    /// Jour à l'heure de Paris (AAAA-MM-JJ).
+    public let day: String
+    /// Heure de Paris (« 14:00 »), nil si toute la journée.
+    public let time: String?
+    public let detail: String?
+    public let source: Source
+
+    public init(title: String, day: String, time: String?, detail: String? = nil, source: Source) {
+        self.title = title
+        self.day = day
+        self.time = time
+        self.detail = detail
+        self.source = source
+    }
+
+    /// Ligne `RDV À VENIR` de l'analyse de Claude.
+    init?(entry: QuoteAnalysis.Entry, timeZone: TimeZone) {
+        guard let day = entry.day else { return nil }
+        self.init(title: entry.title, day: day, time: entry.time, detail: entry.detail, source: .calendar)
+    }
+
+    /// Activité Pipedrive pas encore faite, de type rendez-vous (« meeting », agenda synchronisé, « RDV », visio…).
+    public init?(activity: Activity, typeNames: [String: String], timeZone: TimeZone) {
+        guard !activity.done, Self.isMeeting(activity, typeNames: typeNames),
+              let day = activity.localDay(timeZone: timeZone) else { return nil }
+        self.init(title: activity.subject, day: day, time: Reschedule.parisTime(of: activity, timeZone: timeZone),
+                  source: .pipedrive)
+    }
+
+    static func isMeeting(_ activity: Activity, typeNames: [String: String]) -> Bool {
+        let key = activity.type.lowercased()
+        if ["meeting", "google_agenda"].contains(key) { return true }
+        let name = Label.normalized(typeNames[activity.type] ?? "")
+        return ["rendez-vous", "rdv", "reunion", "visio", "meeting", "agenda"].contains { name.contains($0) }
+    }
+
+    /// Moment du rendez-vous (fin de journée s'il n'a pas d'heure : il reste « à venir » toute la journée).
+    func instant(timeZone: TimeZone) -> Date? {
+        guard let parts = FrenchFormat.dayParts(day) else { return nil }
+        let clock = (time ?? "23:59").split(separator: ":").compactMap { Int($0) }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return calendar.date(from: DateComponents(year: parts.year, month: parts.month, day: parts.day,
+                                                  hour: clock.first ?? 23, minute: clock.last ?? 59))
+    }
+
+    /// Rendez-vous pas encore passés, le plus proche d'abord, sans doublon (même jour et même heure).
+    public static func upcoming(_ meetings: [UpcomingMeeting], now: Date = Date(), timeZone: TimeZone) -> [UpcomingMeeting] {
+        var seen = Set<String>()
+        return meetings
+            .compactMap { meeting in meeting.instant(timeZone: timeZone).map { (meeting, $0) } }
+            .filter { $0.1 >= now }
+            .sorted { $0.1 < $1.1 }
+            .map(\.0)
+            .filter { seen.insert("\($0.day) \($0.time ?? "")").inserted }
+    }
+
+    /// « jeu. 12 novembre à 14:00 ».
+    public func dateText(now: Date = Date(), timeZone: TimeZone) -> String {
+        let date = Reschedule.dateText(day, now: now, timeZone: timeZone)
+        return time.map { "\(date) à \($0)" } ?? date
+    }
+
+    /// « auj. », « demain », « dans 3j ».
+    public func countdown(now: Date = Date(), timeZone: TimeZone) -> String? {
+        guard let days = LeadTags.daysBetween(FrenchFormat.apiDay(from: now, timeZone: timeZone), day) else { return nil }
+        switch days {
+        case ..<1: return "auj."
+        case 1: return "demain"
+        default: return "dans \(days)j"
+        }
     }
 }

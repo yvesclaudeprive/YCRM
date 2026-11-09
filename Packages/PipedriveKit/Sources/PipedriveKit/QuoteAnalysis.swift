@@ -34,6 +34,9 @@ public struct QuoteAnalysis: Hashable, Sendable {
         /// Accès demandés au client (FTP, back-office, Google Ads, GA…) et pas encore reçus (demande d'Yves du
         /// 08/11/2026) : ce n'est pas un devis, mais une étiquette « Accès » à part.
         case access
+        /// Rendez-vous à venir avec le contact, trouvé dans Google Agenda (demande d'Yves du 09/11/2026) :
+        /// « • call BEABA / YATEO | 12/11/2026 à 14:00 | avec Lina ».
+        case meeting
 
         public var title: String {
             switch self {
@@ -43,6 +46,7 @@ public struct QuoteAnalysis: Hashable, Sendable {
             case .signed: return "Signés"
             case .abandoned: return "Abandonnés"
             case .access: return "Accès en attente"
+            case .meeting: return "RDV à venir"
             }
         }
     }
@@ -53,12 +57,15 @@ public struct QuoteAnalysis: Hashable, Sendable {
         /// Date de la ligne (AAAA-MM-JJ) : envoi du devis, envoi en signature ou signature.
         public let day: String?
         public let detail: String?
+        /// Heure de Paris (« 14:00 ») si la date en donne une (« 12/11/2026 à 14:00 ») : rendez-vous.
+        public let time: String?
 
-        public init(status: Status, title: String, day: String?, detail: String?) {
+        public init(status: Status, title: String, day: String?, detail: String?, time: String? = nil) {
             self.status = status
             self.title = title
             self.day = day
             self.detail = detail
+            self.time = time
         }
     }
 
@@ -129,6 +136,7 @@ public struct QuoteAnalysis: Hashable, Sendable {
         "abandonnes": .abandoned, "abandonne": .abandoned, "perdus": .abandoned, "refuses": .abandoned,
         "acces en attente": .access, "demandes d'acces": .access, "acces demandes": .access,
         "devis a faire": .toDo, "a faire": .toDo, "devis attendus": .toDo, "devis demandes": .toDo,
+        "rdv a venir": .meeting, "rendez-vous a venir": .meeting, "rendez-vous": .meeting, "rdv": .meeting,
     ]
     static let commentHeaders: Set<String> = ["commentaires", "commentaire", "commentaires d'yves"]
     static let emptyMarkers: Set<String> = ["aucun", "aucune", "rien", "neant", "-"]
@@ -156,9 +164,18 @@ public struct QuoteAnalysis: Hashable, Sendable {
         if parts.count >= 2 {
             let day = apiDay(in: parts[1])
             let detail = parts.dropFirst(day == nil ? 1 : 2).joined(separator: " | ")
-            return Entry(status: status, title: parts[0], day: day, detail: detail.isEmpty ? nil : detail)
+            return Entry(status: status, title: parts[0], day: day, detail: detail.isEmpty ? nil : detail,
+                         time: day == nil ? nil : clock(in: parts[1]))
         }
         return Entry(status: status, title: line, day: apiDay(in: line), detail: nil)
+    }
+
+    /// Heure « 14:00 » / « 14h00 » / « 9h30 » du texte, au format « HH:MM ».
+    static func clock(in text: String) -> String? {
+        guard let range = text.range(of: #"\b\d{1,2}[:h]\d{2}\b"#, options: .regularExpression) else { return nil }
+        let pieces = text[range].split(whereSeparator: { $0 == ":" || $0 == "h" }).compactMap { Int($0) }
+        guard pieces.count == 2, (0...23).contains(pieces[0]), (0...59).contains(pieces[1]) else { return nil }
+        return String(format: "%02ld:%02ld", pieces[0], pieces[1])
     }
 
     /// Première date « JJ/MM/AAAA » du texte, au format « AAAA-MM-JJ ».

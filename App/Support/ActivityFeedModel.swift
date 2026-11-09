@@ -232,8 +232,24 @@ final class ActivityFeedModel {
     }
 
     private func store(_ result: LeadTags, for id: Int) {
-        tags[id] = result
+        tags[id] = result.adding(meetings: feedMeetings(for: id), timeZone: parisTimeZone)
         tagsComputedAt[id] = Date()
+    }
+
+    /// Rendez-vous à venir déjà dans la liste (activités Pipedrive de type rendez-vous, agenda synchronisé) avec la même
+    /// affaire ou le même contact : ajoutés à l'étiquette « RDV à venir », sans requête en plus.
+    private func feedMeetings(for id: Int) -> [UpcomingMeeting] {
+        guard let item = items.first(where: { $0.id == id }) else { return [] }
+        let dealID = item.activity.dealID
+        let personID = item.person?.id ?? item.activity.personID
+        let names = activityTypeNames
+        return items.compactMap { other in
+            guard other.id != id else { return nil }
+            let sameDeal = dealID != nil && other.activity.dealID == dealID
+            let samePerson = personID != nil && (other.person?.id ?? other.activity.personID) == personID
+            guard sameDeal || samePerson else { return nil }
+            return UpcomingMeeting(activity: other.activity, typeNames: names, timeZone: parisTimeZone)
+        }
     }
 
     /// Filtre « Étiquettes » actif : calcule les étiquettes de toute la liste, 4 activités à la fois.

@@ -81,3 +81,53 @@ final class RescheduleTests: XCTestCase {
         XCTAssertTrue(second["due_time"].isNull, "sans heure : l'heure est effacée")
     }
 }
+
+/// Étiquette « RDV à venir » (demande d'Yves du 09/11/2026) : Google Agenda via l'analyse, ou activité Pipedrive.
+final class UpcomingMeetingTests: XCTestCase {
+    /// Lundi 09/11/2026 à 10:00, heure de Paris.
+    let now = Date(timeIntervalSince1970: 1_794_214_800)
+
+    func testMeetingFromAnalysis() throws {
+        let text = "DEVIS ENVOYÉS\n• Refonte | 16/10/2026 | relancé\nRDV À VENIR\n" +
+            "• call ALPHA / AGENCE - Cadrage | 12/11/2026 à 14:00 | avec Marie\n" +
+            "• Point passé | 02/11/2026 à 10h00 | déjà eu\nAnalyse Claude du 09/11/2026 à 05:17"
+        let analysis = try XCTUnwrap(QuoteAnalysis(text: text))
+        XCTAssertEqual(analysis.entries(.meeting).count, 2)
+        XCTAssertEqual(analysis.entries(.meeting).first?.time, "14:00")
+        XCTAssertEqual(analysis.entries(.meeting).last?.time, "10:00", "« 10h00 » est lu aussi")
+        let tags = LeadTags(analysis: analysis, firstCallToDo: false, now: now, timeZone: paris)
+        XCTAssertTrue(tags.hasUpcomingMeeting)
+        XCTAssertEqual(tags.meetings.count, 1, "le rendez-vous passé ne compte pas")
+        XCTAssertEqual(tags.meetingLine(now: now, timeZone: paris)?.text, "RDV à venir - jeu. 12 novembre à 14:00 - dans 3j")
+        XCTAssertTrue(TagFilter.meeting.matches(tags))
+        XCTAssertTrue(tags.hasPendingQuote, "les devis restent affichés")
+        XCTAssertFalse(tags.isEmpty)
+    }
+
+    func testMeetingFromPipedriveActivity() {
+        let meeting = Activity(id: 5, subject: "Visio cadrage", type: "google_agenda", dueDate: "2026-11-10", dueTime: "08:30",
+                               dealID: 100, personID: 200, orgID: nil, done: false)
+        let task = Activity(id: 6, subject: "Relancer", type: "task", dueDate: "2026-11-10", dueTime: nil,
+                            dealID: 100, personID: 200, orgID: nil, done: false)
+        let custom = Activity(id: 7, subject: "Point", type: "rdv_client", dueDate: "2026-11-20", dueTime: nil,
+                              dealID: 100, personID: 200, orgID: nil, done: false)
+        let found = UpcomingMeeting(activity: meeting, typeNames: [:], timeZone: paris)
+        XCTAssertEqual(found?.time, "09:30", "heure de Paris")
+        XCTAssertNil(UpcomingMeeting(activity: task, typeNames: ["task": "Tâche"], timeZone: paris))
+        XCTAssertNotNil(UpcomingMeeting(activity: custom, typeNames: ["rdv_client": "RDV client"], timeZone: paris))
+        let tags = LeadTags.none.adding(meetings: [found!], now: now, timeZone: paris)
+        XCTAssertEqual(tags.meetingLine(now: now, timeZone: paris)?.text, "RDV à venir - mar. 10 novembre à 09:30 - demain")
+    }
+
+    func testUpcomingSortsDeduplicatesAndDropsPast() {
+        let a = UpcomingMeeting(title: "A", day: "2026-11-12", time: "14:00", source: .calendar)
+        let b = UpcomingMeeting(title: "B", day: "2026-11-12", time: "14:00", source: .pipedrive)
+        let c = UpcomingMeeting(title: "C", day: "2026-11-10", time: nil, source: .pipedrive)
+        let past = UpcomingMeeting(title: "D", day: "2026-11-09", time: "08:00", source: .calendar)
+        let today = UpcomingMeeting(title: "E", day: "2026-11-09", time: nil, source: .pipedrive)
+        let upcoming = UpcomingMeeting.upcoming([a, b, c, past, today], now: now, timeZone: paris)
+        XCTAssertEqual(upcoming.map(\.day), ["2026-11-09", "2026-11-10", "2026-11-12"], "A et B : un seul (même heure)")
+        XCTAssertEqual(upcoming.prefix(2).map(\.title), ["E", "C"])
+        XCTAssertEqual(today.countdown(now: now, timeZone: paris), "auj.")
+    }
+}

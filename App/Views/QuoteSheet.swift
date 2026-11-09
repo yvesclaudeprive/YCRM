@@ -75,7 +75,9 @@ struct QuoteSheet: View {
     @ViewBuilder
     private func analysisView(_ analysis: QuoteAnalysis) -> some View {
         ForEach(QuoteAnalysis.Status.allCases, id: \.self) { status in
-            let entries = analysis.entries(status)
+            // Rendez-vous : seulement ceux à venir.
+            let today = FrenchFormat.apiDay(from: Date(), timeZone: parisTimeZone)
+            let entries = analysis.entries(status).filter { status != .meeting || ($0.day ?? "") >= today }
             if !entries.isEmpty {
                 Text(status.title.uppercased())
                     .font(.caption.weight(.bold))
@@ -115,6 +117,7 @@ struct QuoteSheet: View {
         case .signed: return .green
         case .abandoned: return .gray
         case .access: return .accessBlue
+        case .meeting: return .meetingGreen
         }
     }
 
@@ -126,6 +129,7 @@ struct QuoteSheet: View {
         case .signed: return "checkmark.seal.fill"
         case .abandoned: return "xmark.circle.fill"
         case .access: return "key.fill"
+        case .meeting: return "calendar.badge.checkmark"
         }
     }
 
@@ -138,7 +142,10 @@ struct QuoteSheet: View {
                 Text(highlighted(entry.title))
                     .fontWeight(.bold)
                 Spacer(minLength: 4)
-                if let day = entry.day {
+                if let day = entry.day, entry.status == .meeting {
+                    Text(Reschedule.dateText(day, timeZone: parisTimeZone) + (entry.time.map { " à \($0)" } ?? ""))
+                        .foregroundStyle(.secondary)
+                } else if let day = entry.day {
                     Text(FrenchFormat.longDate(fromAPI: day, timeZone: parisTimeZone) + (ago.map { " · \($0)" } ?? ""))
                         .foregroundStyle(.secondary)
                 }

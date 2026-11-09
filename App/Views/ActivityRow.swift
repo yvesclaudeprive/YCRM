@@ -155,6 +155,11 @@ struct ActivityRow: View {
 
     @ViewBuilder
     private func tagViews(_ tags: LeadTags) -> some View {
+        // Rendez-vous à venir en premier (demande d'Yves du 09/11/2026 : ne pas l'oublier avant de relancer).
+        if let meeting = tags.meetingLine(timeZone: parisTimeZone) {
+            tagCapsule(Self.attributed(meeting, last: false), icon: "calendar.badge.checkmark", color: .meetingGreen)
+                .accessibilityHint("Rendez-vous à venir avec ce contact")
+        }
         let signing = tags.signingLines(timeZone: parisTimeZone)
         if !signing.isEmpty {
             Button {
@@ -707,6 +712,8 @@ extension Color {
     static let accessBlue = Color(red: 0.05, green: 0.42, blue: 0.85)
     /// Étiquette « Devis à faire » (le client attend un devis pas encore envoyé).
     static let toDoPurple = Color(red: 0.50, green: 0.22, blue: 0.84)
+    /// Étiquette « RDV à venir » (rendez-vous déjà calé avec le contact).
+    static let meetingGreen = Color(red: 0.10, green: 0.60, blue: 0.36)
 }
 
 /// Couleurs des 4 lignes (demande d'Yves du 07/11/2026) : actions en orange (appels, mails),
