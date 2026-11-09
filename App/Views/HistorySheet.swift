@@ -61,7 +61,9 @@ struct HistorySheet: View {
                     empty("Aucune note ni activité commentée de votre part pour ce contact.")
                 } else {
                     ForEach(bundle.entries) { entry in
-                        HistoryCard(color: entry.kind.color, icon: entry.kind.icon, badge: entry.badge,
+                        HistoryCard(color: entry.kind.color,
+                                    icon: entry.badge == HistoryEntry.voiceMessageBadge ? "asset:RepondeurVocal" : entry.kind.icon,
+                                    badge: entry.badge,
                                     date: entry.dateText, title: titleIfUseful(entry.title, kind: entry.kind.label),
                                     text: entry.text, footer: entry.author.map { "par \($0)" },
                                     channelIcon: entry.channel?.icon,

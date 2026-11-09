@@ -90,7 +90,7 @@ final class HistoryTests: XCTestCase {
         XCTAssertEqual(byID["activity-92"]?.title, "Msg vocal")
         XCTAssertEqual(byID["activity-92"]?.kind, .voicemail)
         XCTAssertEqual(byID["activity-92"]?.isAutomatic, true)
-        XCTAssertEqual(byID["activity-92"]?.badge, "Répondeur + msg vocal")
+        XCTAssertEqual(byID["activity-92"]?.badge, "Répondeur + Msg vocal")
         XCTAssertEqual(byID["activity-91"]?.channel, .aircall)
         XCTAssertEqual(byID["activity-93"]?.title, "Sms envoyé · WhatsApp envoyé")
         XCTAssertEqual(byID["activity-96"]?.text, "Durée 3 min 10 s", "l'attente avant de décrocher n'est pas la durée")
@@ -126,7 +126,7 @@ final class HistoryTests: XCTestCase {
         XCTAssertEqual(entries.count, 6, entries.map(\.title).joined(separator: " / "))
         XCTAssertEqual(Array(entries.map(\.id).prefix(5)),
                        ["activity-9", "activity-8", "activity-7", "activity-5", "activity-4"])
-        XCTAssertEqual(entries[0].badge, "Répondeur + msg vocal")
+        XCTAssertEqual(entries[0].badge, "Répondeur + Msg vocal")
         XCTAssertNil(entries[0].channel)
         XCTAssertEqual(entries[1].channel, .onoff)
         XCTAssertEqual(entries[1].badge, "Répondeur")

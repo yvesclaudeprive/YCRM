@@ -53,8 +53,10 @@ public struct HistoryEntry: Hashable, Sendable, Identifiable {
     public let isAutomatic: Bool
     /// Outil d'appel (logo affiché après le titre) : Aircall ou OnOff.
     public let channel: HistoryChannel?
-    /// Pastille : nom du type (« Répondeur »), « Répondeur + msg vocal » quand un message vocal a été laissé.
+    /// Pastille : nom du type (« Répondeur »), « Répondeur + Msg vocal » quand un message vocal a été laissé.
     public let badge: String
+    /// Pastille d'un répondeur où un message vocal a été laissé (icône : combiné barré + bande).
+    public static let voiceMessageBadge = "Répondeur + Msg vocal"
 
     public init(id: String, kind: HistoryKind, date: Date?, dateText: String, title: String, author: String?, text: String,
                 isAutomatic: Bool = false, channel: HistoryChannel? = nil, badge: String? = nil) {
@@ -580,7 +582,7 @@ public struct HistoryLoader: Sendable {
             if aircallVoicemail.contains(activity.id), channel == nil { channel = .aircall }
             let normalizedName = Label.normalized(name + " " + activity.subject)
             let leftMessage = normalizedName.contains("msg vocal") || normalizedName.contains("message vocal")
-            let badge: String? = activityKind == .voicemail && !isAircall(activity) && leftMessage ? "Répondeur + msg vocal" : nil
+            let badge: String? = activityKind == .voicemail && !isAircall(activity) && leftMessage ? HistoryEntry.voiceMessageBadge : nil
             if let merged = mergedCall[activity.id] {
                 // « Call effectué » + son appel Aircall : une seule carte.
                 let spoken = merged.map(AircallLog.spoken)

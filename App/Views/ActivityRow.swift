@@ -693,7 +693,7 @@ extension HistoryKind {
         switch self {
         case .note: return "note.text"
         case .call: return "phone.fill"
-        case .voicemail: return "recordingtape"
+        case .voicemail: return "asset:Repondeur"
         case .message: return "message.fill"
         case .mail: return "envelope.fill"
         case .meeting: return "calendar"
