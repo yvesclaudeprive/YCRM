@@ -144,10 +144,10 @@ struct QuoteSheet: View {
                     .fontWeight(.bold)
                 Spacer(minLength: 4)
                 if let day = entry.day, entry.status == .meeting {
-                    Text(Reschedule.dateText(day, timeZone: parisTimeZone) + (entry.time.map { " à \($0)" } ?? ""))
+                    Text(FrenchFormat.longDate(fromAPI: day, timeZone: parisTimeZone, weekday: true) + (entry.time.map { " à \($0)" } ?? ""))
                         .foregroundStyle(.secondary)
                 } else if let day = entry.day {
-                    Text(FrenchFormat.longDate(fromAPI: day, timeZone: parisTimeZone) + (ago.map { " · \($0)" } ?? ""))
+                    Text(FrenchFormat.longDate(fromAPI: day, timeZone: parisTimeZone, weekday: true) + (ago.map { " · \($0)" } ?? ""))
                         .foregroundStyle(.secondary)
                 }
             }

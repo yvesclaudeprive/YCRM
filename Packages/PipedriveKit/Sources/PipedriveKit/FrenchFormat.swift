@@ -66,12 +66,17 @@ public enum FrenchFormat {
         return text
     }
 
+    static let weekdayNames = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"]
+
     static let monthNames = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
                              "septembre", "octobre", "novembre", "décembre"]
 
     /// Date en toutes lettres (demande d'Yves pour l'app) : « 2 novembre », « 1er mars à 14:30 »,
     /// avec l'année seulement si elle diffère de l'année en cours : « 12 décembre 2025 ».
-    public static func longDate(fromAPI text: String, now: Date = Date(), timeZone: TimeZone? = nil) -> String {
+    /// `weekday` : jour de la semaine en tête, « vendredi 6 novembre à 16:57 » (fenêtres d'historique, demande d'Yves
+    /// du 09/11/2026).
+    public static func longDate(fromAPI text: String, now: Date = Date(), timeZone: TimeZone? = nil,
+                                weekday: Bool = false) -> String {
         let zone = timeZone ?? TimeZone(identifier: "Europe/Paris") ?? .current
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = zone
@@ -79,7 +84,11 @@ public enum FrenchFormat {
         func words(day: Int, month: Int, year: Int) -> String {
             let dayText = day == 1 ? "1er" : String(day)
             let monthText = (1...12).contains(month) ? monthNames[month - 1] : String(month)
-            return year == currentYear ? "\(dayText) \(monthText)" : "\(dayText) \(monthText) \(year)"
+            let date = year == currentYear ? "\(dayText) \(monthText)" : "\(dayText) \(monthText) \(year)"
+            guard weekday, let instant = calendar.date(from: DateComponents(year: year, month: month, day: day)) else {
+                return date
+            }
+            return "\(weekdayNames[calendar.component(.weekday, from: instant) - 1]) \(date)"
         }
         if let parts = dayParts(text), text.count == 10 {
             return words(day: parts.day, month: parts.month, year: parts.year)

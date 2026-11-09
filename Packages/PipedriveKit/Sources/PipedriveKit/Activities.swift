@@ -78,9 +78,11 @@ public struct Activity: Hashable, Sendable, Identifiable {
     /// Date affichée : « 7 novembre à 14:30 » (heure de Paris), « 12 décembre 2025 » si autre année.
     public var displayDate: String { displayDate(now: Date()) }
 
-    public func displayDate(now: Date) -> String {
-        if let dueDate, let dueTime { return FrenchFormat.longDate(fromAPI: "\(dueDate)T\(dueTime):00Z", now: now) }
-        return dueDate.map { FrenchFormat.longDate(fromAPI: $0, now: now) } ?? "Sans date"
+    public func displayDate(now: Date, weekday: Bool = false) -> String {
+        if let dueDate, let dueTime {
+            return FrenchFormat.longDate(fromAPI: "\(dueDate)T\(dueTime):00Z", now: now, weekday: weekday)
+        }
+        return dueDate.map { FrenchFormat.longDate(fromAPI: $0, now: now, weekday: weekday) } ?? "Sans date"
     }
 }
 

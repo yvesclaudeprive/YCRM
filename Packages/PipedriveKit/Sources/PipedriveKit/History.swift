@@ -192,8 +192,8 @@ public struct PipedriveNote: Hashable, Sendable, Identifiable {
 
     public var date: Date? { addTime.flatMap(FrenchFormat.parseInstant) }
 
-    public func dateText(now: Date = Date()) -> String {
-        addTime.map { FrenchFormat.longDate(fromAPI: $0, now: now) } ?? ""
+    public func dateText(now: Date = Date(), weekday: Bool = false) -> String {
+        addTime.map { FrenchFormat.longDate(fromAPI: $0, now: now, weekday: weekday) } ?? ""
     }
 
     /// Note créée par Leexi (compte rendu d'appel) : elle commence par un lien vers l'appel dans Leexi.
@@ -244,7 +244,7 @@ public struct LeexiCall: Hashable, Sendable, Identifiable {
         }
         var summary = PlainText.from(html: summaryHTML)
         while summary.hasPrefix(":") { summary = String(summary.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines) }
-        self.init(id: "leexi-\(note.id)", date: note.date, dateText: note.dateText(now: now), title: title, link: link,
+        self.init(id: "leexi-\(note.id)", date: note.date, dateText: note.dateText(now: now, weekday: true), title: title, link: link,
                   summary: summary)
     }
 
@@ -404,7 +404,7 @@ public struct HistoryLoader: Sendable {
             if let ownerID, let author = note.userID, author != ownerID { continue }
             let text = PlainText.from(html: note.html)
             guard !text.isEmpty else { continue }
-            entries.append(HistoryEntry(id: "note-\(note.id)", kind: .note, date: note.date, dateText: note.dateText(now: now),
+            entries.append(HistoryEntry(id: "note-\(note.id)", kind: .note, date: note.date, dateText: note.dateText(now: now, weekday: true),
                                         title: "Note", author: note.authorName, text: text))
         }
         let relatedActivities = try await related
@@ -423,14 +423,14 @@ public struct HistoryLoader: Sendable {
                              AircallLog.displayName(message.to, contact: item.person)]
                     .compactMap { $0 }.joined(separator: " → ")
                 entries.append(HistoryEntry(
-                    id: "activity-\(activity.id)", kind: .message, date: date, dateText: activity.displayDate(now: now),
+                    id: "activity-\(activity.id)", kind: .message, date: date, dateText: activity.displayDate(now: now, weekday: true),
                     title: route.isEmpty ? direction : "\(direction) · \(route)", author: nil, text: message.body))
                 continue
             }
             if AircallLog.isAutomaticCall(type: activity.type, text: text) {
                 // Journal Aircall sans commentaire : titre en français + durée, sur 2 lignes.
                 entries.append(HistoryEntry(
-                    id: "activity-\(activity.id)", kind: kind, date: date, dateText: activity.displayDate(now: now),
+                    id: "activity-\(activity.id)", kind: kind, date: date, dateText: activity.displayDate(now: now, weekday: true),
                     title: AircallLog.frenchTitle(type: activity.type, fallback: typeName), author: nil,
                     text: AircallLog.duration(in: text).map { "Durée \($0)" } ?? "", isAutomatic: true))
                 continue
@@ -441,7 +441,7 @@ public struct HistoryLoader: Sendable {
                 id: "activity-\(activity.id)",
                 kind: kind,
                 date: date,
-                dateText: activity.displayDate(now: now),
+                dateText: activity.displayDate(now: now, weekday: true),
                 title: title,
                 author: nil,
                 text: text

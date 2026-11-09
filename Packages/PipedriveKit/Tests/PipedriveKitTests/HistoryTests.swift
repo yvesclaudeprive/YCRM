@@ -89,10 +89,10 @@ final class HistoryTests: XCTestCase {
         XCTAssertFalse(bundle.entries[1].isAutomatic)
         XCTAssertEqual(bundle.entries[1].title, "Call effectué")
         XCTAssertEqual(bundle.entries[1].text, "A décroché, OK pour un devis")
-        XCTAssertEqual(bundle.entries[1].dateText, "6 novembre à 15:00")
+        XCTAssertEqual(bundle.entries[1].dateText, "vendredi 6 novembre à 15:00", "jour de la semaine dans l'historique")
         XCTAssertEqual(bundle.entries[2].kind, .note)
         XCTAssertEqual(bundle.entries[2].author, "Utilisateur Test")
-        XCTAssertEqual(bundle.entries[2].dateText, "5 novembre à 10:15")
+        XCTAssertEqual(bundle.entries[2].dateText, "jeudi 5 novembre à 10:15")
         XCTAssertTrue(bundle.entries[2].text.hasPrefix("Client intéressé par le SEA :\n• budget"))
         XCTAssertEqual(bundle.entries[3].title, "Tâche · Envoyer la proposition")
 
@@ -101,7 +101,7 @@ final class HistoryTests: XCTestCase {
         XCTAssertEqual(call.title, "Appel découverte Alpha (5 novembre à 11:00)")
         XCTAssertEqual(call.link?.absoluteString, "https://app.leexi.ai/fr/calls/abc-123")
         XCTAssertEqual(call.summary, "Découverte du besoin\nLe client veut refaire son site.")
-        XCTAssertEqual(call.dateText, "5 novembre à 11:30")
+        XCTAssertEqual(call.dateText, "jeudi 5 novembre à 11:30")
 
         let recorded = await transport.recorded
         let notesRequest = try XCTUnwrap(recorded.first { $0.url?.path == "/api/v1/notes" })
