@@ -150,8 +150,25 @@ public enum AircallLog {
         return contact.name
     }
 
-    /// Durée lue dans le journal (« 00:02:15 »), en secondes.
+    /// Durée de conversation lue dans le journal (« Duration of call: 00:02:15 »), en secondes. L'attente avant que
+    /// ça décroche (« Waiting time: 00:00:11 », écrite avant la durée dans les appels entrants) n'est pas une durée.
     public static func seconds(in text: String) -> Int? {
+        var rest = text
+        while let waiting = rest.range(of: #"(?i)waiting time\W{0,5}\d{2}:\d{2}:\d{2}"#, options: .regularExpression) {
+            rest.removeSubrange(waiting)
+        }
+        return clock(in: rest)
+    }
+
+    /// Sonnerie (« Waiting time: 00:00:08 ») d'un appel sans réponse ou manqué, en secondes.
+    public static func waitingSeconds(in text: String) -> Int? {
+        guard let range = text.range(of: #"(?i)waiting time\W{0,5}\d{2}:\d{2}:\d{2}"#, options: .regularExpression) else {
+            return nil
+        }
+        return clock(in: String(text[range]))
+    }
+
+    static func clock(in text: String) -> Int? {
         guard let range = text.range(of: "\\b\\d{2}:\\d{2}:\\d{2}\\b", options: .regularExpression) else { return nil }
         let parts = text[range].split(separator: ":").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
@@ -160,11 +177,29 @@ public enum AircallLog {
 
     /// Durée lue dans le journal (« 00:02:15 ») → « 2 min 15 s ».
     public static func duration(in text: String) -> String? {
-        guard let total = Self.seconds(in: text) else { return nil }
+        Self.seconds(in: text).map(Self.spoken)
+    }
+
+    /// « 2 min 15 s », « 14 s », « 1 h 05 ».
+    static func spoken(_ total: Int) -> String {
         let (hours, minutes, seconds) = (total / 3600, total % 3600 / 60, total % 60)
         if hours > 0 { return "\(hours) h \(String(format: "%02ld", minutes))" }
         if minutes > 0 { return seconds > 0 ? "\(minutes) min \(seconds) s" : "\(minutes) min" }
         return "\(seconds) s"
+    }
+
+    /// Appel sans réponse ou manqué : on n'a pas eu le contact.
+    public static func isUnanswered(type key: String) -> Bool {
+        let lower = key.lowercased()
+        return lower.contains("unanswer") || lower.contains("missed")
+    }
+
+    /// Deuxième ligne de la carte courte : « Durée 2 min 15 s » (décroché) ou « Sonnerie 8 s » (sans réponse, manqué).
+    public static func summary(type key: String, text: String) -> String {
+        if isUnanswered(type: key) {
+            return waitingSeconds(in: text).map { "Sonnerie \(spoken($0))" } ?? ""
+        }
+        return duration(in: text).map { "Durée \($0)" } ?? ""
     }
 }
 
@@ -391,6 +426,8 @@ public struct HistoryLoader: Sendable {
         async let personNotes = notes("person_id", personID)
         async let orgNotes = notes("org_id", orgID)
         async let related = activities(activityFilter)
+        // Appels et messages laissés au contact rattachés à lui seul (ou à une autre affaire) : tentatives pour l'avoir.
+        async let personRelated = personActivities(personID, besides: dealID)
 
         var seenNotes = Set<Int>()
         var entries: [HistoryEntry] = []
@@ -407,14 +444,30 @@ public struct HistoryLoader: Sendable {
             entries.append(HistoryEntry(id: "note-\(note.id)", kind: .note, date: note.date, dateText: note.dateText(now: now, weekday: true),
                                         title: "Note", author: note.authorName, text: text))
         }
-        let relatedActivities = try await related
-        for activity in relatedActivities {
+        let dealActivities = try await related
+        var seenActivities = Set(dealActivities.map(\.id))
+        let personList = await personRelated
+        let extraActivities = personList.filter { activity in
+            guard seenActivities.insert(activity.id).inserted else { return false }
+            if activity.dealID == nil { return true }
+            let kind = HistoryKind(activityType: activity.type, name: typeNames[activity.type] ?? activity.type)
+            return [.call, .voicemail, .message].contains(kind)
+        }
+        for activity in dealActivities + extraActivities {
             if let ownerID, let activityOwner = activity.ownerID, activityOwner != ownerID { continue }
             let text = PlainText.from(html: activity.note ?? "")
-            guard !text.isEmpty else { continue }
             let typeName = typeNames[activity.type] ?? activity.type
             let date = activity.dueInstant ?? activity.dueDate.flatMap { FrenchFormat.parseInstant("\($0)T12:00:00Z") }
             let kind = HistoryKind(activityType: activity.type, name: typeName)
+            if text.isEmpty {
+                // Tentative sans commentaire (« Msg vocal », « Répondeur ON/OFF », « Sms envoyé »…, demande d'Yves du
+                // 09/11/2026 : voir qu'on a essayé de l'avoir) : carte courte, seulement si elle a été faite.
+                guard activity.done, [.call, .voicemail, .message].contains(kind) else { continue }
+                entries.append(HistoryEntry(
+                    id: "activity-\(activity.id)", kind: kind, date: date, dateText: activity.displayDate(now: now, weekday: true),
+                    title: Self.title(activity, typeName: typeName), author: nil, text: "", isAutomatic: true))
+                continue
+            }
             if AircallLog.isMessage(type: activity.type), let message = AircallLog.message(type: activity.type, text: text) {
                 // SMS / WhatsApp Aircall : seulement qui écrit à qui, et le message.
                 let channel = activity.type.lowercased().contains("whatsapp") ? "WhatsApp" : "SMS"
@@ -432,11 +485,10 @@ public struct HistoryLoader: Sendable {
                 entries.append(HistoryEntry(
                     id: "activity-\(activity.id)", kind: kind, date: date, dateText: activity.displayDate(now: now, weekday: true),
                     title: AircallLog.frenchTitle(type: activity.type, fallback: typeName), author: nil,
-                    text: AircallLog.duration(in: text).map { "Durée \($0)" } ?? "", isAutomatic: true))
+                    text: AircallLog.summary(type: activity.type, text: text), isAutomatic: true))
                 continue
             }
-            let title = activity.subject.isEmpty || Label.matches(activity.subject, typeName)
-                ? typeName : "\(typeName) · \(activity.subject)"
+            let title = Self.title(activity, typeName: typeName)
             entries.append(HistoryEntry(
                 id: "activity-\(activity.id)",
                 kind: kind,
@@ -463,5 +515,17 @@ public struct HistoryLoader: Sendable {
     private func activities(_ filter: (String, Int)?) async throws -> [Activity] {
         guard let filter else { return [] }
         return try await client.activities(filter: filter.0, id: filter.1)
+    }
+
+    /// Activités du contact quand l'historique est celui d'une affaire (sinon elles y sont déjà). Indicatif : une
+    /// erreur ne bloque pas le reste.
+    private func personActivities(_ personID: Int?, besides dealID: Int?) async -> [Activity] {
+        guard let personID, dealID != nil else { return [] }
+        return (try? await client.activities(filter: "person_id", id: personID)) ?? []
+    }
+
+    /// « Call effectué », « Sms envoyé · WhatsApp envoyé » : le type, puis le texte s'il dit autre chose.
+    static func title(_ activity: Activity, typeName: String) -> String {
+        activity.subject.isEmpty || Label.matches(activity.subject, typeName) ? typeName : "\(typeName) · \(activity.subject)"
     }
 }

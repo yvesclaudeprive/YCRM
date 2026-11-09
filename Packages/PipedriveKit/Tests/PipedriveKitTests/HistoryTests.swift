@@ -51,6 +51,60 @@ final class HistoryTests: XCTestCase {
         XCTAssertEqual(AircallLog.displayName("Utilisateur Test", contact: contact), "Utilisateur Test")
     }
 
+    /// Appels sans réponse, messages vocaux et SMS notés sans commentaire : visibles (demande d'Yves du 09/11/2026).
+    func testHistoryShowsAttemptsWithoutComment() async throws {
+        let dealActivities = """
+        {"success":true,"data":[
+          {"id":91,"subject":"Outbound unanswered call on Ligne Test","type":"aircall_outbound_unanswere","due_date":"2026-11-06","due_time":"09:00","deal_id":100,"person_id":200,"done":true,"owner_id":7,"note":"Outbound unanswered call on Ligne Test<br>Waiting time: 00:00:08<br>Made by Utilisateur Test"},
+          {"id":92,"subject":"Msg vocal","type":"msg_vocal","due_date":"2026-11-06","due_time":"09:01","deal_id":100,"person_id":200,"done":true,"owner_id":7,"note":null},
+          {"id":93,"subject":"WhatsApp envoyé","type":"sms_envoy","due_date":"2026-11-05","due_time":"10:00","deal_id":100,"person_id":200,"done":true,"owner_id":7,"note":""},
+          {"id":94,"subject":"Rappeler","type":"task","due_date":"2026-11-04","due_time":null,"deal_id":100,"person_id":200,"done":true,"owner_id":7,"note":""},
+          {"id":95,"subject":"Msg vocal","type":"msg_vocal","due_date":"2026-11-20","due_time":null,"deal_id":100,"person_id":200,"done":false,"owner_id":7,"note":null},
+          {"id":96,"subject":"Inbound answered call","type":"aircall_inbound_answered_c","due_date":"2026-11-03","due_time":"08:00","deal_id":100,"person_id":200,"done":true,"owner_id":7,"note":"Inbound answered call<br>Waiting time: 00:00:11<br>Answered by Utilisateur Test<br><br>Duration of call: 00:03:10"}
+        ]}
+        """
+        let personActivities = """
+        {"success":true,"data":[
+          {"id":91,"subject":"Doublon","type":"aircall_outbound_unanswere","due_date":"2026-11-06","due_time":"09:00","deal_id":100,"person_id":200,"done":true,"owner_id":7,"note":"Waiting time: 00:00:08"},
+          {"id":97,"subject":"Missed call on Ligne Test","type":"aircall_missed_call_withou","due_date":"2026-11-02","due_time":"16:00","deal_id":null,"person_id":200,"done":true,"owner_id":7,"note":"Missed call on Ligne Test<br>Waiting time: 00:00:14"},
+          {"id":98,"subject":"Autre affaire","type":"task","due_date":"2026-11-02","due_time":null,"deal_id":555,"person_id":200,"done":true,"owner_id":7,"note":"Sujet d'une autre affaire"}
+        ]}
+        """
+        let transport = MockTransport([
+            "GET /api/v1/notes": .init(status: 200, body: #"{"success":true,"data":[]}"#),
+            "GET /api/v2/activities": .init(status: 200, body: dealActivities),
+            "GET /api/v2/activities?person_id=200": .init(status: 200, body: personActivities),
+        ])
+        let activity = Activity(id: 1, subject: "Relancer", type: "task", dueDate: "2026-11-07", dueTime: nil,
+                                dealID: 100, personID: 200, orgID: nil, done: false, ownerID: 7)
+        let item = ActivityItem(activity: activity, organizationName: "Entreprise Alpha", person: nil, deal: nil)
+        let now = Date(timeIntervalSince1970: 1_794_056_000) // 07/11/2026
+        let bundle = try await HistoryLoader(client: client(transport)).load(
+            for: item, typeNames: ["msg_vocal": "Msg vocal", "sms_envoy": "Sms envoyé", "task": "Tâche"], ownerID: 7,
+            ownerEmail: "moi@example.com", now: now)
+        XCTAssertEqual(bundle.entries.map(\.id), ["activity-92", "activity-91", "activity-93", "activity-96", "activity-97"],
+                       "tâche sans commentaire, alerte pas encore faite et autre affaire exclues ; doublon une fois")
+        let byID = Dictionary(uniqueKeysWithValues: bundle.entries.map { ($0.id, $0) })
+        XCTAssertEqual(byID["activity-91"]?.title, "Appel sortant sans réponse")
+        XCTAssertEqual(byID["activity-91"]?.text, "Sonnerie 8 s")
+        XCTAssertEqual(byID["activity-92"]?.title, "Msg vocal")
+        XCTAssertEqual(byID["activity-92"]?.kind, .voicemail)
+        XCTAssertEqual(byID["activity-92"]?.isAutomatic, true)
+        XCTAssertEqual(byID["activity-93"]?.title, "Sms envoyé · WhatsApp envoyé")
+        XCTAssertEqual(byID["activity-96"]?.text, "Durée 3 min 10 s", "l'attente avant de décrocher n'est pas la durée")
+        XCTAssertEqual(byID["activity-97"]?.title, "Appel manqué")
+        XCTAssertEqual(byID["activity-97"]?.text, "Sonnerie 14 s")
+    }
+
+    func testCallDurationIgnoresWaitingTime() {
+        XCTAssertEqual(AircallLog.seconds(in: "Waiting time: 00:00:11<br>Duration of call: 00:03:10"), 190)
+        XCTAssertNil(AircallLog.seconds(in: "Missed call<br>Waiting time: 00:00:14"))
+        XCTAssertEqual(AircallLog.waitingSeconds(in: "Missed call<br>Waiting time: 00:00:14"), 14)
+        XCTAssertEqual(AircallLog.summary(type: "aircall_outbound_answered_", text: "Duration of call: 00:00:21"), "Durée 21 s")
+        XCTAssertTrue(AircallLog.isUnanswered(type: "aircall_missed_call_with_v"))
+        XCTAssertFalse(AircallLog.isUnanswered(type: "aircall_inbound_answered_c"))
+    }
+
     func testHistoryKinds() {
         XCTAssertEqual(HistoryKind(activityType: "call_effectue", name: "Call effectué"), .call)
         XCTAssertEqual(HistoryKind(activityType: "rpondeur_onoff", name: "Répondeur ON/OFF"), .voicemail)
