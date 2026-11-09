@@ -49,11 +49,13 @@ public struct LeadTags: Hashable, Sendable {
                   }, now: now, timeZone: timeZone))
     }
 
-    /// Les mêmes étiquettes avec d'autres rendez-vous à venir (activités Pipedrive de la liste), sans doublon.
-    public func adding(meetings more: [UpcomingMeeting], now: Date = Date(), timeZone: TimeZone) -> LeadTags {
-        guard !more.isEmpty else { return self }
+    /// Les mêmes étiquettes avec d'autres accès en attente et rendez-vous à venir (activités Pipedrive de la liste,
+    /// analyse de Claude sans partie devis), sans doublon.
+    public func adding(access moreAccess: [QuoteSent] = [], meetings more: [UpcomingMeeting], now: Date = Date(),
+                       timeZone: TimeZone) -> LeadTags {
+        guard !more.isEmpty || !moreAccess.isEmpty else { return self }
         return LeadTags(quotes: quotes, firstCallToDo: firstCallToDo, signature: signature, signing: signing,
-                        analysis: analysis, access: access, toDo: toDo,
+                        analysis: analysis, access: access + moreAccess, toDo: toDo,
                         meetings: UpcomingMeeting.upcoming(meetings + more, now: now, timeZone: timeZone))
     }
 
@@ -444,7 +446,8 @@ public struct LeadTagsLoader: Sendable {
         // Affaire perdue : pas d'étiquette. Affaire gagnée : signée (date de gain), donc pas d'étiquette non plus.
         if let deal = item.deal, deal.status == "lost" { return .none }
         // Analyse de Claude (champ « Devis en attente ») : elle fait foi pour les devis, devis par devis.
-        if let analysis = QuoteAnalysis(text: item.deal?.quoteAnalysis) {
+        let analysis = QuoteAnalysis(text: item.deal?.quoteAnalysis)
+        if let analysis, analysis.coversQuotes {
             var firstCall = false
             if item.deal?.status != "won", analysis.entries(.signed).isEmpty {
                 let check = try await conversation(dealID: dealID, personID: personID, typeNames: typeNames)
@@ -452,6 +455,19 @@ public struct LeadTagsLoader: Sendable {
             }
             return LeadTags(analysis: analysis, firstCallToDo: firstCall, now: now, timeZone: timeZone)
         }
+        let local = try await localTags(for: item, dealID: dealID, personID: personID, typeNames: typeNames,
+                                        timeZone: timeZone, now: now, myEmail: myEmail)
+        guard let analysis else { return local }
+        // Analyse sans partie devis (seulement des accès en attente ou des rendez-vous) : les devis restent cherchés par
+        // l'app, les accès et rendez-vous viennent de l'analyse.
+        return local.adding(access: analysis.quotes(.access, now: now, timeZone: timeZone),
+                            meetings: analysis.entries(.meeting).compactMap { UpcomingMeeting(entry: $0, timeZone: timeZone) },
+                            now: now, timeZone: timeZone)
+    }
+
+    /// Règles de l'app quand Claude n'a pas encore analysé les devis de l'affaire.
+    func localTags(for item: ActivityItem, dealID: Int?, personID: Int?, typeNames: [String: String],
+                   timeZone: TimeZone, now: Date, myEmail: String?) async throws -> LeadTags {
         if let deal = item.deal, deal.status == "won" {
             let day = deal.wonTime.flatMap(FrenchFormat.parseInstant).map { FrenchFormat.apiDay(from: $0, timeZone: timeZone) }
                 ?? FrenchFormat.apiDay(from: now, timeZone: timeZone)

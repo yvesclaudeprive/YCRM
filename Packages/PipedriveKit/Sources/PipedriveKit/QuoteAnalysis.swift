@@ -79,6 +79,15 @@ public struct QuoteAnalysis: Hashable, Sendable {
 
     public func entries(_ status: Status) -> [Entry] { entries.filter { $0.status == status } }
 
+    /// L'analyse parle des devis (au moins une ligne de devis, ou « AUCUN DEVIS ») : elle fait alors foi pour les devis.
+    /// Un champ qui ne contient que des accès en attente ou des rendez-vous laisse l'app chercher les devis elle-même.
+    public var coversQuotes: Bool {
+        noQuoteMarker || entries.contains { ![.access, .meeting].contains($0.status) }
+    }
+
+    /// Ligne « AUCUN DEVIS » : Claude a vérifié, il n'y a aucun devis.
+    public let noQuoteMarker: Bool
+
     /// nil si le champ est vide (affaire pas encore analysée).
     public init?(text: String?) {
         guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
@@ -88,6 +97,7 @@ public struct QuoteAnalysis: Hashable, Sendable {
         var entries: [Entry] = []
         var comments: [String] = []
         var footer: String?
+        var noQuoteMarker = false
         let lines = text.replacingOccurrences(of: "\r", with: "\n").components(separatedBy: "\n")
         for rawLine in lines {
             let line = Self.withoutBullet(rawLine)
@@ -95,6 +105,10 @@ public struct QuoteAnalysis: Hashable, Sendable {
             // Une ligne à puce n'est jamais un titre de section (« • Devis envoyé » reste un devis).
             let bulleted = line != rawLine.trimmingCharacters(in: .whitespaces)
             let key = Self.headerKey(line)
+            if !bulleted, key == "aucun devis" {
+                noQuoteMarker = true
+                continue
+            }
             if !bulleted, key.hasPrefix("analyse claude") {
                 footer = line
                 continue
@@ -127,6 +141,7 @@ public struct QuoteAnalysis: Hashable, Sendable {
         }.map(\.element)
         self.comments = comments
         self.footer = footer
+        self.noQuoteMarker = noQuoteMarker
     }
 
     static let sections: [String: Status] = [

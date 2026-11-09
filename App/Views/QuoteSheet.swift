@@ -178,6 +178,15 @@ struct QuoteSheet: View {
         ForEach(tags.quotes, id: \.self) { quote in
             card(quote)
         }
+        // Accès en attente et rendez-vous tirés de l'analyse de Claude (champ sans partie devis).
+        ForEach(tags.access, id: \.self) { access in
+            entryCard(QuoteAnalysis.Entry(status: .access, title: access.subject, day: access.day.isEmpty ? nil : access.day,
+                                          detail: access.note))
+        }
+        ForEach(tags.meetings, id: \.self) { meeting in
+            entryCard(QuoteAnalysis.Entry(status: .meeting, title: meeting.title, day: meeting.day, detail: meeting.detail,
+                                          time: meeting.time))
+        }
         Text("Affaire pas encore analysée par Claude (analyse à 5h17 et 13h17). En attendant : activités « Devis envoyé » et e-mails de l'agence au client avec un devis joint (6 derniers mois). « Signé » : affaire gagnée, champ « Contrat signé le », lancement du projet, ou note / activité / e-mail qui dit « signé » (« À la suite de la signature du bon de commande », « Bon pour accord ») après le dernier devis.")
             .font(.caption)
             .foregroundStyle(.secondary)

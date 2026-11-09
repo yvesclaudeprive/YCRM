@@ -131,3 +131,30 @@ final class UpcomingMeetingTests: XCTestCase {
         XCTAssertEqual(today.countdown(now: now, timeZone: paris), "auj.")
     }
 }
+
+/// Champ d'analyse avec seulement des rendez-vous ou des accès : l'app cherche quand même les devis elle-même.
+final class PartialAnalysisTests: XCTestCase {
+    func testCoversQuotes() throws {
+        let meetingsOnly = try XCTUnwrap(QuoteAnalysis(text: "RDV À VENIR\n• call X | 12/11/2026 à 10:00 | avec Y\nAnalyse Claude du 09/11/2026 à 01:56"))
+        XCTAssertFalse(meetingsOnly.coversQuotes)
+        let accessOnly = try XCTUnwrap(QuoteAnalysis(text: "ACCÈS EN ATTENTE\n• FTP | 02/07/2026 | demandé\nAnalyse Claude du 09/11/2026 à 01:56"))
+        XCTAssertFalse(accessOnly.coversQuotes)
+        let none = try XCTUnwrap(QuoteAnalysis(text: "AUCUN DEVIS\nAnalyse Claude du 09/11/2026 à 01:56"))
+        XCTAssertTrue(none.coversQuotes)
+        XCTAssertTrue(none.entries.isEmpty)
+        let quotes = try XCTUnwrap(QuoteAnalysis(text: "DEVIS ENVOYÉS\n• Refonte | 16/10/2026 | relancé\nAnalyse Claude du 09/11/2026 à 01:56"))
+        XCTAssertTrue(quotes.coversQuotes)
+    }
+
+    func testAddingAccessAndMeetingsKeepsLocalQuotes() {
+        let local = LeadTags(quoteSentDay: "2026-11-02", firstCallToDo: true)
+        let meeting = UpcomingMeeting(title: "call X", day: "2026-11-12", time: "10:00", source: .calendar)
+        let access = QuoteSent(id: 0, source: .analysis, subject: "FTP", day: "2026-07-02", dateText: "2 juillet", note: nil)
+        let now = Date(timeIntervalSince1970: 1_794_214_800)
+        let merged = local.adding(access: [access], meetings: [meeting], now: now, timeZone: paris)
+        XCTAssertTrue(merged.hasPendingQuote)
+        XCTAssertTrue(merged.firstCallToDo)
+        XCTAssertTrue(merged.hasAccessPending)
+        XCTAssertTrue(merged.hasUpcomingMeeting)
+    }
+}
