@@ -41,6 +41,28 @@ final class RescheduleTests: XCTestCase {
         }
     }
 
+    /// Rendez-vous à venir : son jour est le premier choix (demande d'Yves du 09/11/2026), sans doublon.
+    func testMeetingDayComesFirst() {
+        let meeting = UpcomingMeeting(title: "call ALPHA", day: "2026-11-12", time: "14:00", source: .calendar)
+        let choices = Reschedule.choices(now: monday, timeZone: paris, meeting: meeting)
+        XCTAssertEqual(choices.first?.title, "Jour du RDV")
+        XCTAssertEqual(choices.first?.day, "2026-11-12")
+        XCTAssertEqual(choices.first?.dateText, "jeu. 12 novembre · RDV à 14:00")
+        XCTAssertEqual(choices.filter { $0.day == "2026-11-12" }.count, 1)
+
+        let monday16 = UpcomingMeeting(title: "Visio", day: "2026-11-16", time: nil, source: .pipedrive)
+        let withMonday = Reschedule.choices(now: monday, timeZone: paris, meeting: monday16)
+        XCTAssertEqual(withMonday.first?.dateText, "lun. 16 novembre")
+        XCTAssertFalse(withMonday.contains { $0.title == "Lundi prochain" }, "même jour que le RDV : une seule fois")
+
+        let today = UpcomingMeeting(title: "Point", day: "2026-11-09", time: "17:00", source: .calendar)
+        XCTAssertEqual(Reschedule.choices(now: monday, timeZone: paris, meeting: today).first?.day, "2026-11-09",
+                       "RDV aujourd'hui : proposé quand même")
+        let past = UpcomingMeeting(title: "Point", day: "2026-11-02", time: nil, source: .calendar)
+        XCTAssertEqual(Reschedule.choices(now: monday, timeZone: paris, meeting: past).first?.title, "Demain")
+        XCTAssertEqual(Reschedule.choices(now: monday, timeZone: paris).first?.title, "Demain", "sans RDV : comme avant")
+    }
+
     func testDueKeepsParisTimeInUTC() {
         XCTAssertEqual(Reschedule.due(day: "2026-11-16", parisTime: "14:30", timeZone: paris).date, "2026-11-16")
         XCTAssertEqual(Reschedule.due(day: "2026-11-16", parisTime: "14:30", timeZone: paris).time, "13:30")

@@ -6,6 +6,8 @@ import PipedriveKit
 /// l'échéance dans Pipedrive.
 struct RescheduleSheet: View {
     let item: ActivityItem
+    /// Prochain rendez-vous avec le contact : son jour est le premier choix, sélectionné d'office.
+    var meeting: UpcomingMeeting? = nil
     /// Jour (AAAA-MM-JJ, Paris) et heure de Paris (« 14:30 ») choisis, nil = sans heure.
     let confirm: (String, String?) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -152,7 +154,7 @@ struct RescheduleSheet: View {
     }
 
     private func setUp() {
-        choices = Reschedule.choices(timeZone: parisTimeZone)
+        choices = Reschedule.choices(timeZone: parisTimeZone, meeting: meeting)
         if let first = choices.first {
             selectedChoice = first.id
             date = FrenchFormat.date(fromAPIDay: first.day, timeZone: parisTimeZone) ?? Date()

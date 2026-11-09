@@ -146,7 +146,7 @@ struct ActivityListView: View {
             })
         }
         .sheet(item: $rescheduleItem) { item in
-            RescheduleSheet(item: item) { day, time in
+            RescheduleSheet(item: item, meeting: feed.tags[item.id]?.nextMeeting(timeZone: parisTimeZone)) { day, time in
                 Task { await reschedule(item, day: day, parisTime: time) }
             }
         }

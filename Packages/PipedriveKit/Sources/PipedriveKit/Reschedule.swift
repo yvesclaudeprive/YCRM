@@ -16,8 +16,9 @@ public enum Reschedule {
     static let weekdayNames = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."]
 
     /// Choix rapides à partir d'aujourd'hui (heure de Paris). Un jour qui tombe un week-end passe au lundi ;
-    /// deux choix qui donnent le même jour n'apparaissent qu'une fois.
-    public static func choices(now: Date = Date(), timeZone: TimeZone) -> [RescheduleChoice] {
+    /// deux choix qui donnent le même jour n'apparaissent qu'une fois. Avec un rendez-vous à venir, son jour est le
+    /// premier choix (demande d'Yves du 09/11/2026), tel quel (même un samedi, même aujourd'hui).
+    public static func choices(now: Date = Date(), timeZone: TimeZone, meeting: UpcomingMeeting? = nil) -> [RescheduleChoice] {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         let today = calendar.startOfDay(for: now)
@@ -69,12 +70,21 @@ public enum Reschedule {
         ]
 
         var seen = Set<String>()
-        return raw.compactMap { id, title, target in
+        var result: [RescheduleChoice] = []
+        let todayText = FrenchFormat.apiDay(from: today, timeZone: timeZone)
+        if let meeting, meeting.day >= todayText {
+            seen.insert(meeting.day)
+            let date = dateText(meeting.day, now: now, timeZone: timeZone)
+            result.append(RescheduleChoice(id: "meeting", title: "Jour du RDV",
+                                           day: meeting.day, dateText: meeting.time.map { "\(date) · RDV à \($0)" } ?? date))
+        }
+        for (id, title, target) in raw {
             let workday = Self.workday(target, calendar: calendar)
             let day = FrenchFormat.apiDay(from: workday, timeZone: timeZone)
-            guard day > FrenchFormat.apiDay(from: today, timeZone: timeZone), seen.insert(day).inserted else { return nil }
-            return RescheduleChoice(id: id, title: title, day: day, dateText: dateText(day, now: now, timeZone: timeZone))
+            guard day > todayText, seen.insert(day).inserted else { continue }
+            result.append(RescheduleChoice(id: id, title: title, day: day, dateText: dateText(day, now: now, timeZone: timeZone)))
         }
+        return result
     }
 
     /// Samedi ou dimanche → lundi suivant.
