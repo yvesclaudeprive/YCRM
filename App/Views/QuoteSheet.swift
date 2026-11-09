@@ -10,6 +10,7 @@ struct QuoteSheet: View {
     let openDeal: () -> Void
     let writeNote: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         NavigationStack {
@@ -157,6 +158,19 @@ struct QuoteSheet: View {
                     .font(.body)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            // Rendez-vous : ouvrir dans Google Agenda (l'événement s'il est connu, sinon la journée).
+            if entry.status == .meeting, let day = entry.day,
+               let url = UpcomingMeeting(title: entry.title, day: day, time: entry.time, source: .calendar,
+                                         link: entry.link).calendarURL {
+                Button {
+                    openURL(url)
+                } label: {
+                    Label("Ouvrir dans Google Agenda", systemImage: "arrow.up.right.square")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.borderless)
+                .tint(color)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -185,7 +199,7 @@ struct QuoteSheet: View {
         }
         ForEach(tags.meetings, id: \.self) { meeting in
             entryCard(QuoteAnalysis.Entry(status: .meeting, title: meeting.title, day: meeting.day, detail: meeting.detail,
-                                          time: meeting.time))
+                                          time: meeting.time, link: meeting.link))
         }
         Text("Affaire pas encore analysée par Claude (analyse à 5h17 et 13h17). En attendant : activités « Devis envoyé » et e-mails de l'agence au client avec un devis joint (6 derniers mois). « Signé » : affaire gagnée, champ « Contrat signé le », lancement du projet, ou note / activité / e-mail qui dit « signé » (« À la suite de la signature du bon de commande », « Bon pour accord ») après le dernier devis.")
             .font(.caption)

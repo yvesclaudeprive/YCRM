@@ -367,6 +367,9 @@ struct ActivityListView: View {
             claudeNote = item
         case .reschedule:
             rescheduleItem = item
+        case .openMeeting(let meeting):
+            // Lien universel : l'app Google Agenda si elle le prend en charge, sinon Google Agenda dans Safari.
+            open(meeting.calendarURL, failure: "Google Agenda n'a pas pu s'ouvrir.")
         case .explain(let reason):
             explanation = reason
         case .openOrganization:

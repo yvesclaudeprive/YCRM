@@ -105,9 +105,14 @@ public struct LeadTags: Hashable, Sendable {
     /// Étiquette « RDV à venir - jeu. 12 novembre à 14:00 - dans 3j » : le prochain rendez-vous seulement (il peut
     /// être passé entre-temps : rien alors).
     public func meetingLine(now: Date = Date(), timeZone: TimeZone) -> TagLine? {
-        guard let next = UpcomingMeeting.upcoming(meetings, now: now, timeZone: timeZone).first else { return nil }
+        guard let next = nextMeeting(now: now, timeZone: timeZone) else { return nil }
         return TagLine(prefix: "RDV à venir", title: next.dateText(now: now, timeZone: timeZone),
                        age: next.countdown(now: now, timeZone: timeZone))
+    }
+
+    /// Le prochain rendez-vous (celui de l'étiquette, ouvert dans Google Agenda quand on la touche).
+    public func nextMeeting(now: Date = Date(), timeZone: TimeZone) -> UpcomingMeeting? {
+        UpcomingMeeting.upcoming(meetings, now: now, timeZone: timeZone).first
     }
 
     /// Lignes de l'étiquette « Devis à faire » : « Devis à faire - Audit SEO - 11j » (depuis la demande du client).
@@ -608,19 +613,36 @@ public struct UpcomingMeeting: Hashable, Sendable {
     public let time: String?
     public let detail: String?
     public let source: Source
+    /// Lien de l'événement Google Agenda (noté par l'analyse de Claude), nil sinon.
+    public let link: String?
 
-    public init(title: String, day: String, time: String?, detail: String? = nil, source: Source) {
+    public init(title: String, day: String, time: String?, detail: String? = nil, source: Source, link: String? = nil) {
         self.title = title
         self.day = day
         self.time = time
         self.detail = detail
         self.source = source
+        self.link = link
     }
 
     /// Ligne `RDV À VENIR` de l'analyse de Claude.
     init?(entry: QuoteAnalysis.Entry, timeZone: TimeZone) {
         guard let day = entry.day else { return nil }
-        self.init(title: entry.title, day: day, time: entry.time, detail: entry.detail, source: .calendar)
+        self.init(title: entry.title, day: day, time: entry.time, detail: entry.detail, source: .calendar, link: entry.link)
+    }
+
+    /// Google Agenda (demande d'Yves du 09/11/2026) : l'événement lui-même si l'analyse a noté son lien, sinon la
+    /// journée du rendez-vous. Lien universel calendar.google.com : l'app Google Agenda s'ouvre si elle le prend en
+    /// charge, sinon Safari.
+    public var calendarURL: URL? {
+        if let link, var components = URLComponents(string: link), let host = components.host,
+           host == "google.com" || host.hasSuffix(".google.com"), components.path.hasPrefix("/calendar/") {
+            components.scheme = "https"
+            components.host = "calendar.google.com"
+            if let url = components.url { return url }
+        }
+        guard let parts = FrenchFormat.dayParts(day) else { return nil }
+        return URL(string: "https://calendar.google.com/calendar/r/day/\(parts.year)/\(parts.month)/\(parts.day)")
     }
 
     /// Activité Pipedrive pas encore faite, de type rendez-vous (« meeting », agenda synchronisé, « RDV », visio…).
@@ -654,7 +676,8 @@ public struct UpcomingMeeting: Hashable, Sendable {
         return meetings
             .compactMap { meeting in meeting.instant(timeZone: timeZone).map { (meeting, $0) } }
             .filter { $0.1 >= now }
-            .sorted { $0.1 < $1.1 }
+            // Même moment : celui qui a un lien Google Agenda d'abord (c'est lui qui reste).
+            .sorted { $0.1 != $1.1 ? $0.1 < $1.1 : ($0.0.link != nil && $1.0.link == nil) }
             .map(\.0)
             .filter { seen.insert("\($0.day) \($0.time ?? "")").inserted }
     }

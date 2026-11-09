@@ -59,13 +59,16 @@ public struct QuoteAnalysis: Hashable, Sendable {
         public let detail: String?
         /// Heure de Paris (« 14:00 ») si la date en donne une (« 12/11/2026 à 14:00 ») : rendez-vous.
         public let time: String?
+        /// Lien de l'événement Google Agenda noté sur la ligne (rendez-vous), retiré du détail.
+        public let link: String?
 
-        public init(status: Status, title: String, day: String?, detail: String?, time: String? = nil) {
+        public init(status: Status, title: String, day: String?, detail: String?, time: String? = nil, link: String? = nil) {
             self.status = status
             self.title = title
             self.day = day
             self.detail = detail
             self.time = time
+            self.link = link
         }
     }
 
@@ -174,15 +177,28 @@ public struct QuoteAnalysis: Hashable, Sendable {
     }
 
     static func entry(_ line: String, status: Status) -> Entry {
-        let parts = line.split(separator: "|", omittingEmptySubsequences: false)
+        let (link, text) = calendarLink(in: line)
+        // Lien retiré : plus de morceau vide après le titre et la date.
+        let parts = text.split(separator: "|", omittingEmptySubsequences: false)
             .map { $0.trimmingCharacters(in: .whitespaces) }
+            .enumerated().filter { $0.offset < 2 || !$0.element.isEmpty }.map(\.element)
         if parts.count >= 2 {
             let day = apiDay(in: parts[1])
             let detail = parts.dropFirst(day == nil ? 1 : 2).joined(separator: " | ")
             return Entry(status: status, title: parts[0], day: day, detail: detail.isEmpty ? nil : detail,
-                         time: day == nil ? nil : clock(in: parts[1]))
+                         time: day == nil ? nil : clock(in: parts[1]), link: link)
         }
-        return Entry(status: status, title: line, day: apiDay(in: line), detail: nil)
+        return Entry(status: status, title: text, day: apiDay(in: text), detail: nil, link: link)
+    }
+
+    /// Lien d'un événement Google Agenda (« https://www.google.com/calendar/event?eid=… », demande d'Yves du
+    /// 09/11/2026 : toucher « RDV à venir » ouvre le rendez-vous) et la ligne sans ce lien.
+    static func calendarLink(in line: String) -> (link: String?, rest: String) {
+        guard let range = line.range(of: #"https?://(?:www\.|calendar\.)?google\.com/calendar/[^\s|]+"#,
+                                     options: .regularExpression) else { return (nil, line) }
+        var rest = line
+        rest.removeSubrange(range)
+        return (String(line[range]), rest.trimmingCharacters(in: .whitespaces))
     }
 
     /// Heure « 14:00 » / « 14h00 » / « 9h30 » du texte, au format « HH:MM ».

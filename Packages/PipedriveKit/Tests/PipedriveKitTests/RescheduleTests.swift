@@ -130,6 +130,45 @@ final class UpcomingMeetingTests: XCTestCase {
         XCTAssertEqual(upcoming.prefix(2).map(\.title), ["E", "C"])
         XCTAssertEqual(today.countdown(now: now, timeZone: paris), "auj.")
     }
+
+    /// Toucher « RDV à venir » ouvre Google Agenda (demande d'Yves du 09/11/2026) : l'événement si l'analyse a noté
+    /// son lien, sinon la journée du rendez-vous (lien fictif).
+    func testCalendarLink() throws {
+        let text = "RDV À VENIR\n" +
+            "• call ALPHA | 12/11/2026 à 14:00 | avec Marie | https://www.google.com/calendar/event?eid=QUJDMTIz\n" +
+            "• Point | 20/11/2026 | sans lien\nAnalyse Claude du 09/11/2026 à 05:17"
+        let analysis = try XCTUnwrap(QuoteAnalysis(text: text))
+        let alpha = try XCTUnwrap(analysis.entries(.meeting).first { $0.title == "call ALPHA" })
+        XCTAssertEqual(alpha.detail, "avec Marie", "le lien n'apparaît pas dans le détail")
+        XCTAssertEqual(alpha.link, "https://www.google.com/calendar/event?eid=QUJDMTIz")
+        XCTAssertEqual(alpha.time, "14:00")
+        XCTAssertNil(analysis.entries(.meeting).first { $0.title == "Point" }?.link)
+        let tags = LeadTags(analysis: analysis, firstCallToDo: false, now: now, timeZone: paris)
+        XCTAssertEqual(tags.nextMeeting(now: now, timeZone: paris)?.calendarURL?.absoluteString,
+                       "https://calendar.google.com/calendar/event?eid=QUJDMTIz", "lien universel calendar.google.com")
+
+        let bare = QuoteAnalysis.entry("call B | 13/11/2026 à 09:00 | https://calendar.google.com/calendar/event?eid=WFla",
+                                       status: .meeting)
+        XCTAssertNil(bare.detail)
+        XCTAssertEqual(bare.link, "https://calendar.google.com/calendar/event?eid=WFla")
+
+        let pipedrive = UpcomingMeeting(title: "Visio", day: "2026-11-20", time: nil, source: .pipedrive)
+        XCTAssertEqual(pipedrive.calendarURL?.absoluteString, "https://calendar.google.com/calendar/r/day/2026/11/20",
+                       "sans lien : la journée du rendez-vous")
+        let foreign = UpcomingMeeting(title: "X", day: "2027-01-04", time: nil, source: .calendar,
+                                      link: "https://google.com.example.org/calendar/event?eid=AAA")
+        XCTAssertEqual(foreign.calendarURL?.absoluteString, "https://calendar.google.com/calendar/r/day/2027/1/4",
+                       "un lien qui n'est pas Google Agenda n'est jamais ouvert")
+    }
+
+    func testSameMeetingKeepsTheCalendarLink() {
+        let pipedrive = UpcomingMeeting(title: "Visio", day: "2026-11-12", time: "14:00", source: .pipedrive)
+        let calendar = UpcomingMeeting(title: "call ALPHA", day: "2026-11-12", time: "14:00", source: .calendar,
+                                       link: "https://www.google.com/calendar/event?eid=QUJD")
+        let upcoming = UpcomingMeeting.upcoming([pipedrive, calendar], now: now, timeZone: paris)
+        XCTAssertEqual(upcoming.count, 1)
+        XCTAssertEqual(upcoming.first?.link, "https://www.google.com/calendar/event?eid=QUJD")
+    }
 }
 
 /// Champ d'analyse avec seulement des rendez-vous ou des accès : l'app cherche quand même les devis elle-même.

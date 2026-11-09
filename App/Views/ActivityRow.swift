@@ -15,6 +15,8 @@ enum ActivityAction {
     case showQuotes
     /// Bouton « Note pour Claude » (bloc glissé vers la droite) : commentaire lu par l'analyse des devis.
     case noteForClaude
+    /// Étiquette « RDV à venir » touchée : le rendez-vous dans Google Agenda.
+    case openMeeting(UpcomingMeeting)
     /// Bouton grisé touché : on explique pourquoi.
     case explain(String)
 }
@@ -156,9 +158,15 @@ struct ActivityRow: View {
     @ViewBuilder
     private func tagViews(_ tags: LeadTags) -> some View {
         // Rendez-vous à venir en premier (demande d'Yves du 09/11/2026 : ne pas l'oublier avant de relancer).
-        if let meeting = tags.meetingLine(timeZone: parisTimeZone) {
-            tagCapsule(Self.attributed(meeting, last: false), icon: "calendar.badge.checkmark", color: .meetingGreen)
-                .accessibilityHint("Rendez-vous à venir avec ce contact")
+        // Touchée : le rendez-vous dans Google Agenda (demande d'Yves du 09/11/2026).
+        if let meeting = tags.meetingLine(timeZone: parisTimeZone), let next = tags.nextMeeting(timeZone: parisTimeZone) {
+            Button {
+                perform(.openMeeting(next))
+            } label: {
+                tagCapsule(Self.attributed(meeting, last: true), icon: "calendar.badge.checkmark", color: .meetingGreen)
+            }
+            .buttonStyle(PressableStyle())
+            .accessibilityHint("Ouvrir le rendez-vous dans Google Agenda")
         }
         let signing = tags.signingLines(timeZone: parisTimeZone)
         if !signing.isEmpty {
