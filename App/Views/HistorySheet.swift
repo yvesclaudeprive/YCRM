@@ -61,9 +61,10 @@ struct HistorySheet: View {
                     empty("Aucune note ni activité commentée de votre part pour ce contact.")
                 } else {
                     ForEach(bundle.entries) { entry in
-                        HistoryCard(color: entry.kind.color, icon: entry.kind.icon, badge: entry.kind.label,
+                        HistoryCard(color: entry.kind.color, icon: entry.kind.icon, badge: entry.badge,
                                     date: entry.dateText, title: titleIfUseful(entry.title, kind: entry.kind.label),
                                     text: entry.text, footer: entry.author.map { "par \($0)" },
+                                    channelIcon: entry.channel?.icon,
                                     compact: entry.isAutomatic,
                                     isCollapsible: !entry.isAutomatic && HistoryCard.isLong(entry.text),
                                     isExpanded: expandedIDs.contains(entry.id),

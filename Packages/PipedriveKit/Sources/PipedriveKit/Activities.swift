@@ -17,9 +17,12 @@ public struct Activity: Hashable, Sendable, Identifiable {
     public let note: String?
     /// Utilisateur Pipedrive à qui l'activité est attribuée.
     public let ownerID: Int?
+    /// Création dans Pipedrive (UTC, « 2026-07-02T10:10:54Z ») : moment réel d'une activité notée sans heure.
+    public let addTime: String?
 
     public init(id: Int, subject: String, type: String, dueDate: String?, dueTime: String?,
-                dealID: Int?, personID: Int?, orgID: Int?, done: Bool, note: String? = nil, ownerID: Int? = nil) {
+                dealID: Int?, personID: Int?, orgID: Int?, done: Bool, note: String? = nil, ownerID: Int? = nil,
+                addTime: String? = nil) {
         self.id = id
         self.subject = subject
         self.type = type
@@ -31,6 +34,7 @@ public struct Activity: Hashable, Sendable, Identifiable {
         self.done = done
         self.note = note
         self.ownerID = ownerID
+        self.addTime = addTime
     }
 
     init?(json: JSONValue) {
@@ -50,7 +54,8 @@ public struct Activity: Hashable, Sendable, Identifiable {
             orgID: json["org_id"].intValue,
             done: json["done"].boolValue ?? false,
             note: json["note"].stringValue,
-            ownerID: json["owner_id"].intValue ?? json["user_id"].intValue
+            ownerID: json["owner_id"].intValue ?? json["user_id"].intValue,
+            addTime: json["add_time"].stringValue
         )
     }
 

@@ -147,6 +147,6 @@ public extension Activity {
     /// La même alerte avec une nouvelle échéance (format Pipedrive : UTC si une heure est renseignée).
     func withDue(date: String, time: String?) -> Activity {
         Activity(id: id, subject: subject, type: type, dueDate: date, dueTime: time, dealID: dealID, personID: personID,
-                 orgID: orgID, done: done, note: note, ownerID: ownerID)
+                 orgID: orgID, done: done, note: note, ownerID: ownerID, addTime: addTime)
     }
 }

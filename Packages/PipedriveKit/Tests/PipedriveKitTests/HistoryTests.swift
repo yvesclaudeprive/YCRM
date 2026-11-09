@@ -90,10 +90,57 @@ final class HistoryTests: XCTestCase {
         XCTAssertEqual(byID["activity-92"]?.title, "Msg vocal")
         XCTAssertEqual(byID["activity-92"]?.kind, .voicemail)
         XCTAssertEqual(byID["activity-92"]?.isAutomatic, true)
+        XCTAssertEqual(byID["activity-92"]?.badge, "Répondeur + msg vocal")
+        XCTAssertEqual(byID["activity-91"]?.channel, .aircall)
         XCTAssertEqual(byID["activity-93"]?.title, "Sms envoyé · WhatsApp envoyé")
         XCTAssertEqual(byID["activity-96"]?.text, "Durée 3 min 10 s", "l'attente avant de décrocher n'est pas la durée")
         XCTAssertEqual(byID["activity-97"]?.title, "Appel manqué")
         XCTAssertEqual(byID["activity-97"]?.text, "Sonnerie 14 s")
+    }
+
+    /// Doublons nettoyés (demande d'Yves du 09/11/2026, données fictives inspirées d'un vrai historique) : 3 journaux
+    /// « décroché » à la même minute = 2 répondeurs + l'appel du « Call effectué » ; répondeur Aircall reconnu.
+    func testHistoryMergesAircallDuplicatesAndVoicemails() {
+        func act(_ id: Int, _ type: String, _ day: String, _ time: String?, note: String? = nil, added: String? = nil,
+                 subject: String = "") -> Activity {
+            Activity(id: id, subject: subject, type: type, dueDate: day, dueTime: time, dealID: 100, personID: 200, orgID: nil,
+                     done: true, note: note, ownerID: 7, addTime: added)
+        }
+        let answered = "aircall_outbound_answered_"
+        let activities = [
+            act(1, answered, "2026-07-02", "10:03", note: "Outbound answered call<br>Duration of call: 00:00:27"),
+            act(2, answered, "2026-07-02", "10:03", note: "Outbound answered call<br>Duration of call: 00:00:18"),
+            act(3, answered, "2026-07-02", "10:03", note: "Outbound answered call<br>Duration of call: 00:05:04"),
+            act(4, "call_effectue", "2026-07-02", nil, note: "Je l'ai eu et : il veut un point", added: "2026-07-02T10:10:54Z",
+                subject: "Call effectué"),
+            act(5, answered, "2026-09-01", "15:35", note: "Outbound answered call<br>Duration of call: 00:00:26"),
+            act(6, answered, "2026-09-04", "08:15", note: "Outbound answered call<br>Duration of call: 00:00:20"),
+            act(7, "rpondeur_sans_message", "2026-09-04", "08:30", subject: "Répondeur sans message"),
+            act(8, "repondeur_onoff", "2026-09-07", "13:30", subject: "Répondeur ON/OFF"),
+            act(9, "msg_vocal", "2026-09-08", "09:00", subject: "Msg vocal"),
+        ]
+        let names = ["call_effectue": "Call effectué", "rpondeur_sans_message": "Répondeur sans message",
+                     "repondeur_onoff": "Répondeur ON/OFF", "msg_vocal": "Msg vocal"]
+        let entries = HistoryLoader.activityEntries(activities, typeNames: names, contact: nil,
+                                                    now: Date(timeIntervalSince1970: 1_794_056_000))
+        XCTAssertEqual(entries.count, 6, entries.map(\.title).joined(separator: " / "))
+        XCTAssertEqual(Array(entries.map(\.id).prefix(5)),
+                       ["activity-9", "activity-8", "activity-7", "activity-5", "activity-4"])
+        XCTAssertEqual(entries[0].badge, "Répondeur + msg vocal")
+        XCTAssertNil(entries[0].channel)
+        XCTAssertEqual(entries[1].channel, .onoff)
+        XCTAssertEqual(entries[1].badge, "Répondeur")
+        XCTAssertEqual(entries[2].title, "Répondeur sans message")
+        XCTAssertEqual(entries[2].channel, .aircall, "le journal Aircall de 20 s juste avant est fondu dedans")
+        XCTAssertEqual(entries[3].title, "Répondeur Aircall")
+        XCTAssertEqual(entries[3].kind, .voicemail)
+        XCTAssertEqual(entries[3].text, "Durée 26 s")
+        XCTAssertEqual(entries[3].channel, .aircall)
+        XCTAssertEqual(entries[4].title, "Call effectué · 5 min 4 s", "l'appel décroché le plus long est celui du compte rendu")
+        XCTAssertEqual(entries[4].channel, .aircall)
+        XCTAssertEqual(entries[4].text, "Je l'ai eu et : il veut un point")
+        XCTAssertEqual(entries[5].title, "Répondeur Aircall ×2")
+        XCTAssertEqual(entries[5].text, "")
     }
 
     func testCallDurationIgnoresWaitingTime() {

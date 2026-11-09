@@ -51,9 +51,13 @@ public struct HistoryEntry: Hashable, Sendable, Identifiable {
     public let text: String
     /// Texte généré automatiquement (journal Aircall : répondeur, appel décroché…) : affichage court sur 2 lignes.
     public let isAutomatic: Bool
+    /// Outil d'appel (logo affiché après le titre) : Aircall ou OnOff.
+    public let channel: HistoryChannel?
+    /// Pastille : nom du type (« Répondeur »), « Répondeur + msg vocal » quand un message vocal a été laissé.
+    public let badge: String
 
     public init(id: String, kind: HistoryKind, date: Date?, dateText: String, title: String, author: String?, text: String,
-                isAutomatic: Bool = false) {
+                isAutomatic: Bool = false, channel: HistoryChannel? = nil, badge: String? = nil) {
         self.id = id
         self.kind = kind
         self.date = date
@@ -62,6 +66,31 @@ public struct HistoryEntry: Hashable, Sendable, Identifiable {
         self.author = author
         self.text = text
         self.isAutomatic = isAutomatic
+        self.channel = channel
+        self.badge = badge ?? kind.label
+    }
+
+    func with(title: String? = nil, text: String? = nil, channel: HistoryChannel? = nil) -> HistoryEntry {
+        HistoryEntry(id: id, kind: kind, date: date, dateText: dateText, title: title ?? self.title, author: author,
+                     text: text ?? self.text, isAutomatic: isAutomatic, channel: channel ?? self.channel, badge: badge)
+    }
+}
+
+/// Outil avec lequel l'appel a été passé (demande d'Yves du 09/11/2026 : logo après « Répondeur Aircall » /
+/// « Répondeur ON/OFF »).
+public enum HistoryChannel: String, Sendable, Hashable {
+    case aircall, onoff
+
+    /// Déduit du type d'activité (« aircall_… », « Répondeur ON/OFF », « Répondeur Aircall »).
+    init?(activityType key: String, name: String) {
+        let text = Label.normalized(key + " " + name)
+        if text.contains("aircall") {
+            self = .aircall
+        } else if text.contains("onoff") || text.contains("on/off") || text.contains("on off") {
+            self = .onoff
+        } else {
+            return nil
+        }
     }
 }
 
@@ -453,52 +482,11 @@ public struct HistoryLoader: Sendable {
             let kind = HistoryKind(activityType: activity.type, name: typeNames[activity.type] ?? activity.type)
             return [.call, .voicemail, .message].contains(kind)
         }
-        for activity in dealActivities + extraActivities {
-            if let ownerID, let activityOwner = activity.ownerID, activityOwner != ownerID { continue }
-            let text = PlainText.from(html: activity.note ?? "")
-            let typeName = typeNames[activity.type] ?? activity.type
-            let date = activity.dueInstant ?? activity.dueDate.flatMap { FrenchFormat.parseInstant("\($0)T12:00:00Z") }
-            let kind = HistoryKind(activityType: activity.type, name: typeName)
-            if text.isEmpty {
-                // Tentative sans commentaire (« Msg vocal », « Répondeur ON/OFF », « Sms envoyé »…, demande d'Yves du
-                // 09/11/2026 : voir qu'on a essayé de l'avoir) : carte courte, seulement si elle a été faite.
-                guard activity.done, [.call, .voicemail, .message].contains(kind) else { continue }
-                entries.append(HistoryEntry(
-                    id: "activity-\(activity.id)", kind: kind, date: date, dateText: activity.displayDate(now: now, weekday: true),
-                    title: Self.title(activity, typeName: typeName), author: nil, text: "", isAutomatic: true))
-                continue
-            }
-            if AircallLog.isMessage(type: activity.type), let message = AircallLog.message(type: activity.type, text: text) {
-                // SMS / WhatsApp Aircall : seulement qui écrit à qui, et le message.
-                let channel = activity.type.lowercased().contains("whatsapp") ? "WhatsApp" : "SMS"
-                let direction = message.isOutbound ? "\(channel) envoyé" : "\(channel) reçu"
-                let route = [AircallLog.displayName(message.from, contact: item.person),
-                             AircallLog.displayName(message.to, contact: item.person)]
-                    .compactMap { $0 }.joined(separator: " → ")
-                entries.append(HistoryEntry(
-                    id: "activity-\(activity.id)", kind: .message, date: date, dateText: activity.displayDate(now: now, weekday: true),
-                    title: route.isEmpty ? direction : "\(direction) · \(route)", author: nil, text: message.body))
-                continue
-            }
-            if AircallLog.isAutomaticCall(type: activity.type, text: text) {
-                // Journal Aircall sans commentaire : titre en français + durée, sur 2 lignes.
-                entries.append(HistoryEntry(
-                    id: "activity-\(activity.id)", kind: kind, date: date, dateText: activity.displayDate(now: now, weekday: true),
-                    title: AircallLog.frenchTitle(type: activity.type, fallback: typeName), author: nil,
-                    text: AircallLog.summary(type: activity.type, text: text), isAutomatic: true))
-                continue
-            }
-            let title = Self.title(activity, typeName: typeName)
-            entries.append(HistoryEntry(
-                id: "activity-\(activity.id)",
-                kind: kind,
-                date: date,
-                dateText: activity.displayDate(now: now, weekday: true),
-                title: title,
-                author: nil,
-                text: text
-            ))
+        let mine = (dealActivities + extraActivities).filter { activity in
+            guard let ownerID, let activityOwner = activity.ownerID else { return true }
+            return activityOwner == ownerID
         }
+        entries += Self.activityEntries(mine, typeNames: typeNames, contact: item.person, now: now)
         let byDate: (Date?, Date?) -> Bool = { ($0 ?? .distantPast) > ($1 ?? .distantPast) }
         return HistoryBundle(
             entries: Array(entries.sorted { byDate($0.date, $1.date) }.prefix(limit)),
@@ -522,6 +510,154 @@ public struct HistoryLoader: Sendable {
     private func personActivities(_ personID: Int?, besides dealID: Int?) async -> [Activity] {
         guard let personID, dealID != nil else { return [] }
         return (try? await client.activities(filter: "person_id", id: personID)) ?? []
+    }
+
+    /// Cartes des activités, sans doublons (demande d'Yves du 09/11/2026) :
+    /// - journal Aircall « décroché » juste avant un « Call effectué » (45 min avant à 5 min après) : c'est le même
+    ///   appel, une seule carte « Call effectué · 5 min 4 s » avec le logo Aircall (le plus long des journaux) ;
+    /// - journal Aircall « décroché » de moins d'une minute = la messagerie a répondu : « Répondeur Aircall », fondu
+    ///   dans le « Répondeur… » / « Msg vocal » noté juste après (20 min avant à 5 min après) s'il y en a un ;
+    /// - cartes courtes identiques à moins de 15 min d'écart : une seule, « Répondeur Aircall ×2 ».
+    static func activityEntries(_ activities: [Activity], typeNames: [String: String], contact: PersonContact?,
+                                now: Date) -> [HistoryEntry] {
+        func typeName(_ activity: Activity) -> String { typeNames[activity.type] ?? activity.type }
+        func kind(_ activity: Activity) -> HistoryKind { HistoryKind(activityType: activity.type, name: typeName(activity)) }
+        func moment(_ activity: Activity) -> Date? {
+            activity.dueInstant ?? activity.addTime.flatMap(FrenchFormat.parseInstant)
+        }
+        func isAircall(_ activity: Activity) -> Bool { activity.type.lowercased().hasPrefix("aircall") }
+        func isAnsweredLog(_ activity: Activity) -> Bool {
+            let lower = activity.type.lowercased()
+            return isAircall(activity) && lower.contains("answered") && !AircallLog.isUnanswered(type: lower)
+                && AircallLog.isAutomaticCall(type: lower, text: "")
+        }
+        func seconds(_ activity: Activity) -> Int? { AircallLog.seconds(in: PlainText.from(html: activity.note ?? "")) }
+        func isShort(_ activity: Activity) -> Bool { (seconds(activity) ?? 0) < LeadTagRules.minimumCallSeconds }
+
+        let logs = activities.filter(isAnsweredLog)
+        var usedLogs = Set<Int>()
+        var mergedCall: [Int: Int?] = [:]          // « Call effectué » → durée de l'appel Aircall fondu
+        var aircallVoicemail = Set<Int>()            // « Répondeur… » noté après un répondeur Aircall
+        var manual: [(activity: Activity, time: Date)] = []
+        for activity in activities where !isAircall(activity) && activity.done {
+            if let time = moment(activity) { manual.append((activity, time)) }
+        }
+        manual.sort { (a: (activity: Activity, time: Date), b: (activity: Activity, time: Date)) -> Bool in a.time < b.time }
+        for (activity, time) in manual {
+            let window: (before: TimeInterval, after: TimeInterval)
+            switch kind(activity) {
+            case .call: window = (45 * 60, 5 * 60)
+            case .voicemail: window = (20 * 60, 5 * 60)
+            default: continue
+            }
+            let earliest = time.addingTimeInterval(-window.before)
+            let latest = time.addingTimeInterval(window.after)
+            var candidates: [Activity] = []
+            for log in logs where !usedLogs.contains(log.id) {
+                if let start = moment(log), start >= earliest, start <= latest { candidates.append(log) }
+            }
+            if kind(activity) == .call {
+                guard let longest = candidates.max(by: { (seconds($0) ?? 0) < (seconds($1) ?? 0) }) else { continue }
+                usedLogs.insert(longest.id)
+                mergedCall[activity.id] = seconds(longest)
+            } else {
+                let short = candidates.filter(isShort)
+                guard !short.isEmpty else { continue }
+                short.forEach { usedLogs.insert($0.id) }
+                aircallVoicemail.insert(activity.id)
+            }
+        }
+
+        var entries: [HistoryEntry] = []
+        for activity in activities where !usedLogs.contains(activity.id) {
+            let text = PlainText.from(html: activity.note ?? "")
+            let name = typeName(activity)
+            let date = activity.dueInstant ?? activity.dueDate.flatMap { FrenchFormat.parseInstant("\($0)T12:00:00Z") }
+            let dateText = activity.displayDate(now: now, weekday: true)
+            let activityKind = kind(activity)
+            let id = "activity-\(activity.id)"
+            var channel = HistoryChannel(activityType: activity.type, name: name)
+            if aircallVoicemail.contains(activity.id), channel == nil { channel = .aircall }
+            let normalizedName = Label.normalized(name + " " + activity.subject)
+            let leftMessage = normalizedName.contains("msg vocal") || normalizedName.contains("message vocal")
+            let badge: String? = activityKind == .voicemail && !isAircall(activity) && leftMessage ? "Répondeur + msg vocal" : nil
+            if let merged = mergedCall[activity.id] {
+                // « Call effectué » + son appel Aircall : une seule carte.
+                let spoken = merged.map(AircallLog.spoken)
+                let title = Self.title(activity, typeName: name)
+                if text.isEmpty {
+                    entries.append(HistoryEntry(id: id, kind: activityKind, date: date, dateText: dateText, title: title,
+                                                author: nil, text: spoken.map { "Durée \($0)" } ?? "", isAutomatic: true,
+                                                channel: .aircall, badge: badge))
+                } else {
+                    entries.append(HistoryEntry(id: id, kind: activityKind, date: date, dateText: dateText,
+                                                title: spoken.map { "\(title) · \($0)" } ?? title, author: nil, text: text,
+                                                channel: .aircall, badge: badge))
+                }
+                continue
+            }
+            if text.isEmpty {
+                // Tentative sans commentaire (« Msg vocal », « Répondeur ON/OFF », « Sms envoyé »…, demande d'Yves du
+                // 09/11/2026 : voir qu'on a essayé de l'avoir) : carte courte, seulement si elle a été faite.
+                guard activity.done, [.call, .voicemail, .message].contains(activityKind) else { continue }
+                entries.append(HistoryEntry(id: id, kind: activityKind, date: date, dateText: dateText,
+                                            title: Self.title(activity, typeName: name), author: nil, text: "",
+                                            isAutomatic: true, channel: channel, badge: badge))
+                continue
+            }
+            if AircallLog.isMessage(type: activity.type), let message = AircallLog.message(type: activity.type, text: text) {
+                // SMS / WhatsApp Aircall : seulement qui écrit à qui, et le message.
+                let medium = activity.type.lowercased().contains("whatsapp") ? "WhatsApp" : "SMS"
+                let direction = message.isOutbound ? "\(medium) envoyé" : "\(medium) reçu"
+                let route = [AircallLog.displayName(message.from, contact: contact),
+                             AircallLog.displayName(message.to, contact: contact)]
+                    .compactMap { $0 }.joined(separator: " → ")
+                entries.append(HistoryEntry(id: id, kind: .message, date: date, dateText: dateText,
+                                            title: route.isEmpty ? direction : "\(direction) · \(route)", author: nil,
+                                            text: message.body, channel: .aircall))
+                continue
+            }
+            if AircallLog.isAutomaticCall(type: activity.type, text: text) {
+                // Journal Aircall : titre en français + durée (ou sonnerie), sur 2 lignes. Décroché moins d'une minute
+                // = la messagerie a répondu : « Répondeur Aircall ».
+                if isAnsweredLog(activity), isShort(activity) {
+                    entries.append(HistoryEntry(id: id, kind: .voicemail, date: date, dateText: dateText,
+                                                title: "Répondeur Aircall", author: nil,
+                                                text: AircallLog.summary(type: activity.type, text: text), isAutomatic: true,
+                                                channel: .aircall))
+                } else {
+                    entries.append(HistoryEntry(id: id, kind: activityKind, date: date, dateText: dateText,
+                                                title: AircallLog.frenchTitle(type: activity.type, fallback: name), author: nil,
+                                                text: AircallLog.summary(type: activity.type, text: text), isAutomatic: true,
+                                                channel: .aircall))
+                }
+                continue
+            }
+            entries.append(HistoryEntry(id: id, kind: activityKind, date: date, dateText: dateText,
+                                        title: Self.title(activity, typeName: name), author: nil, text: text,
+                                        channel: channel, badge: badge))
+        }
+        return collapseRepeats(entries)
+    }
+
+    /// Cartes courtes identiques (même titre, même outil) à moins de 15 min d'écart : une seule, « ×2 ».
+    static func collapseRepeats(_ entries: [HistoryEntry]) -> [HistoryEntry] {
+        let sorted = entries.sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
+        var result: [HistoryEntry] = []
+        var counts: [Int] = []
+        for entry in sorted {
+            if let last = result.last, last.isAutomatic, entry.isAutomatic, last.title == entry.title,
+               last.channel == entry.channel, last.kind == entry.kind,
+               let a = last.date, let b = entry.date, abs(a.timeIntervalSince(b)) <= 15 * 60 {
+                counts[counts.count - 1] += 1
+                continue
+            }
+            result.append(entry)
+            counts.append(1)
+        }
+        return zip(result, counts).map { entry, count in
+            count > 1 ? entry.with(title: "\(entry.title) ×\(count)", text: "") : entry
+        }
     }
 
     /// « Call effectué », « Sms envoyé · WhatsApp envoyé » : le type, puis le texte s'il dit autre chose.

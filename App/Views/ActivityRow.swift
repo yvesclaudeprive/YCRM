@@ -537,6 +537,8 @@ struct HistoryCard: View {
     let footer: String?
     var lineLimit: Int? = nil
     var link: URL?
+    /// Logo de l'outil d'appel (« asset:Aircall », « asset:OnOff ») après le titre, sur la même ligne.
+    var channelIcon: String? = nil
     /// Journal automatique (répondeur, appel décroché) : 2 lignes seulement.
     var compact = false
     /// Carte pliable (texte long) : plié = 3 lignes, déplié = tout.
@@ -565,10 +567,15 @@ struct HistoryCard: View {
     private var compactBody: some View {
         VStack(alignment: .leading, spacing: 2) {
             badgeLine
-            Text([title, text.isEmpty ? nil : text].compactMap { $0 }.joined(separator: " · "))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            HStack(spacing: 5) {
+                Text([title, text.isEmpty ? nil : text].compactMap { $0 }.joined(separator: " · "))
+                    .lineLimit(1)
+                if let channelIcon {
+                    GlyphIcon(name: channelIcon, size: 12)
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         .padding(.vertical, 6)
         .padding(.leading, 12)
@@ -614,9 +621,15 @@ struct HistoryCard: View {
                 }
             }
             if let title {
-                // Même taille que le texte en dessous.
-                Text(title)
-                    .font(.body.weight(.semibold))
+                // Même taille que le texte en dessous ; logo de l'outil d'appel juste après.
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.body.weight(.semibold))
+                    if let channelIcon {
+                        GlyphIcon(name: channelIcon, size: 15)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
             Text(highlighted(text))
                 .font(.body)
@@ -649,6 +662,16 @@ struct HistoryCard: View {
                 .frame(width: 4)
         }
         .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+extension HistoryChannel {
+    /// Logo (masque teinté) : Aircall ou OnOff.
+    var icon: String {
+        switch self {
+        case .aircall: return "asset:Aircall"
+        case .onoff: return "asset:OnOff"
+        }
     }
 }
 
