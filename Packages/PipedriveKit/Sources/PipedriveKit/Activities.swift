@@ -299,6 +299,53 @@ public enum DateStatus: Sendable, Equatable {
 public enum DebriefTemplate {
     public static let typeName = "Call effectué"
     public static let noteHTML = "<p>Je l'ai eu au téléphone et :</p><ul><li>x</li></ul>"
+    /// Première ligne du compte rendu, proposée dans la fenêtre « Debrief call » de l'app (demande d'Yves du
+    /// 10/11/2026 : écrire le compte rendu dans l'app plutôt que dans Pipedrive).
+    public static let heading = "Je l'ai eu au téléphone et :"
+    /// Texte de départ de la fenêtre : la première ligne et une puce prête à remplir.
+    public static let starter = heading + "\n• "
+
+    /// Vrai si le compte rendu dit quelque chose en plus de la première ligne et des puces vides.
+    public static func hasContent(_ text: String) -> Bool {
+        text.components(separatedBy: "\n").contains { line in
+            let clean = bulletText(line) ?? line.trimmingCharacters(in: .whitespaces)
+            return !clean.isEmpty && !Label.matches(clean, heading)
+        }
+    }
+
+    /// Compte rendu saisi → note HTML de l'activité : chaque ligne en paragraphe, les lignes « • », « - », « * »
+    /// en liste à puces (lignes vides et puces vides retirées).
+    public static func html(from text: String) -> String {
+        var html = ""
+        var inList = false
+        for line in text.replacingOccurrences(of: "\r", with: "\n").components(separatedBy: "\n") {
+            if let bullet = bulletText(line) {
+                guard !bullet.isEmpty else { continue }
+                if !inList { html += "<ul>"; inList = true }
+                html += "<li>\(escape(bullet))</li>"
+                continue
+            }
+            let paragraph = line.trimmingCharacters(in: .whitespaces)
+            guard !paragraph.isEmpty else { continue }
+            if inList { html += "</ul>"; inList = false }
+            html += "<p>\(escape(paragraph))</p>"
+        }
+        if inList { html += "</ul>" }
+        return html
+    }
+
+    /// Texte d'une ligne à puce (« • rappeler lundi » → « rappeler lundi »), nil si la ligne n'est pas une puce.
+    static func bulletText(_ line: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard let first = trimmed.first, "•-*◦▪".contains(first) else { return nil }
+        return String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)
+    }
+
+    static func escape(_ text: String) -> String {
+        text.replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
 }
 
 /// Filtre « Score » (demande d'Yves du 08/11/2026) : les activités sans « Score priorisation »

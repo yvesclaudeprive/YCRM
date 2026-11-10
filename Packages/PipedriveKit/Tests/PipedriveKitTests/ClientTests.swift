@@ -136,6 +136,18 @@ final class ClientTests: XCTestCase {
         XCTAssertEqual(PlainText.from(html: DebriefTemplate.noteHTML), "Je l'ai eu au téléphone et :\n• x")
     }
 
+    /// Compte rendu écrit dans l'app (demande d'Yves du 10/11/2026) : texte → note HTML de « Call effectué ».
+    func testDebriefTextBecomesNoteHTML() {
+        XCTAssertFalse(DebriefTemplate.hasContent(DebriefTemplate.starter), "modèle seul : rien à enregistrer")
+        XCTAssertFalse(DebriefTemplate.hasContent("Je l'ai eu au téléphone et :\n• \n•"))
+        XCTAssertTrue(DebriefTemplate.hasContent(DebriefTemplate.starter + "OK pour un devis"))
+        let text = "Je l'ai eu au téléphone et :\n• OK pour un devis SEO & SEA\n• budget < 2 000 €\n• \n\nRappeler lundi"
+        XCTAssertEqual(DebriefTemplate.html(from: text),
+                       "<p>Je l'ai eu au téléphone et :</p><ul><li>OK pour un devis SEO &amp; SEA</li>"
+                       + "<li>budget &lt; 2 000 €</li></ul><p>Rappeler lundi</p>")
+        XCTAssertEqual(DebriefTemplate.html(from: "- a\n* b"), "<ul><li>a</li><li>b</li></ul>")
+    }
+
     func testLastMailUsesFirstMessageOfThreadForGmailID() async throws {
         let transport = MockTransport([
             "GET /api/v1/persons/200/mailMessages": .init(status: 200, body: Fixtures.personMails),

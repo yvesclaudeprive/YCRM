@@ -8,6 +8,10 @@ struct RescheduleSheet: View {
     let item: ActivityItem
     /// Prochain rendez-vous avec le contact : son jour est le premier choix, sélectionné d'office.
     var meeting: UpcomingMeeting? = nil
+    /// Alerte qui vient d'être enregistrée (« Répondeur ON/OFF », « Call effectué »…) : bandeau en haut, annulable.
+    var logged: LoggedAlert? = nil
+    /// Supprime l'alerte enregistrée ; vrai si c'est fait (la fenêtre se ferme alors).
+    var undoLogged: (() async -> Bool)? = nil
     /// Jour (AAAA-MM-JJ, Paris) et heure de Paris (« 14:30 ») choisis, nil = sans heure.
     let confirm: (String, String?) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -17,6 +21,7 @@ struct RescheduleSheet: View {
     @State private var date = Date()
     @State private var hasTime = false
     @State private var time = Date()
+    @State private var undoing = false
 
     private var today: Date { Calendar.current.startOfDay(for: Date()) }
 
@@ -24,6 +29,9 @@ struct RescheduleSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    if let logged {
+                        loggedBanner(logged)
+                    }
                     header
                     quickChoices
                     calendar
@@ -32,7 +40,7 @@ struct RescheduleSheet: View {
                 .padding(16)
             }
             .safeAreaInset(edge: .bottom) { confirmButton }
-            .navigationTitle("Décaler l'alerte")
+            .navigationTitle(logged == nil ? "Décaler l'alerte" : "Prochaine relance")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -43,6 +51,38 @@ struct RescheduleSheet: View {
         .presentationDetents([.large])
         .presentationBackground(.background)
         .onAppear(perform: setUp)
+    }
+
+    /// « ✅ « Répondeur ON/OFF » enregistré » + « Annuler » (supprime l'activité et ferme la fenêtre).
+    private func loggedBanner(_ logged: LoggedAlert) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+            Text("« \(logged.label) » enregistré dans Pipedrive")
+                .font(.subheadline.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            if let undoLogged {
+                Button {
+                    undoing = true
+                    Task {
+                        if await undoLogged() { dismiss() }
+                        undoing = false
+                    }
+                } label: {
+                    if undoing {
+                        ProgressView()
+                    } else {
+                        Text("Annuler")
+                            .font(.subheadline.bold())
+                    }
+                }
+                .tint(Color.yateoRed)
+                .disabled(undoing)
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.green.opacity(0.1)))
     }
 
     private var header: some View {

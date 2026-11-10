@@ -39,7 +39,10 @@ struct ActivityListView: View {
     @State private var historySheet: HistoryRequest?
     @State private var quoteSheet: ActivityItem?
     @State private var claudeNote: ActivityItem?
-    @State private var rescheduleItem: ActivityItem?
+    @State private var rescheduleRequest: RescheduleRequest?
+    /// Fenêtre « Debrief call » ouverte ; une fois le compte rendu enregistré, « Décaler l'alerte » s'ouvre ensuite.
+    @State private var debriefItem: ActivityItem?
+    @State private var pendingReschedule: RescheduleRequest?
     /// Bloc glissé vers la droite (boutons « Note pour Claude » / « Analyse devis » visibles).
     @State private var swipedItemID: Int?
     @State private var explanation: String?
@@ -145,9 +148,22 @@ struct ActivityListView: View {
                 }
             })
         }
-        .sheet(item: $rescheduleItem) { item in
-            RescheduleSheet(item: item, meeting: feed.tags[item.id]?.nextMeeting(timeZone: parisTimeZone)) { day, time in
+        .sheet(item: $rescheduleRequest) { request in
+            let item = request.item
+            RescheduleSheet(item: item, meeting: feed.tags[item.id]?.nextMeeting(timeZone: parisTimeZone),
+                            logged: request.logged, undoLogged: undoAction(for: request)) { day, time in
                 Task { await reschedule(item, day: day, parisTime: time) }
+            }
+        }
+        .sheet(item: $debriefItem, onDismiss: {
+            // Compte rendu enregistré : on enchaîne sur « Décaler l'alerte » une fois la fenêtre fermée.
+            if let next = pendingReschedule {
+                pendingReschedule = nil
+                rescheduleRequest = next
+            }
+        }) { item in
+            DebriefSheet(item: item) { text in
+                await saveDebrief(text, for: item)
             }
         }
         .sheet(item: $claudeNote) { item in
@@ -366,7 +382,7 @@ struct ActivityListView: View {
         case .noteForClaude:
             claudeNote = item
         case .reschedule:
-            rescheduleItem = item
+            rescheduleRequest = RescheduleRequest(item: item)
         case .openMeeting(let meeting):
             // Lien universel : l'app Google Agenda si elle le prend en charge, sinon Google Agenda dans Safari.
             open(meeting.calendarURL, failure: "Google Agenda n'a pas pu s'ouvrir.")
@@ -384,8 +400,8 @@ struct ActivityListView: View {
         case .voicemailOnOff:
             Task { await logDoneActivity(type: "Répondeur ON/OFF", for: item) }
         case .debriefCall:
-            // « Call effectué » daté du clic, avec le modèle de compte rendu à compléter dans Pipedrive.
-            Task { await logDoneActivity(type: DebriefTemplate.typeName, note: DebriefTemplate.noteHTML, for: item) }
+            // Compte rendu écrit dans l'app (demande d'Yves du 10/11/2026), puis « Décaler l'alerte ».
+            debriefItem = item
         case .whatsappSent:
             // Pas de type WhatsApp dans Pipedrive : type « Sms envoyé », texte « WhatsApp envoyé ».
             Task { await logDoneActivity(type: "Sms envoyé", subject: "WhatsApp envoyé", for: item) }
@@ -529,29 +545,47 @@ struct ActivityListView: View {
         )
     }
 
-    /// Crée dans Pipedrive une activité terminée datée de maintenant (type existant, texte par défaut = nom du type).
-    private func logDoneActivity(type typeName: String, subject: String? = nil, note: String? = nil,
-                                 for item: ActivityItem) async {
+    /// Alerte Pipedrive (Rép. tel, Répondeur ON/OFF, WhatsApp, Msg laissé aux collègues, Sms envoyé) : activité
+    /// terminée datée de maintenant, puis fenêtre « Décaler l'alerte » pour fixer la prochaine relance (demande d'Yves
+    /// du 10/11/2026 : on reste dans l'app, plus d'ouverture de Pipedrive). L'activité s'annule depuis cette fenêtre.
+    private func logDoneActivity(type typeName: String, subject: String? = nil, for item: ActivityItem) async {
         busyItemIDs.insert(item.id)
         defer { busyItemIDs.remove(item.id) }
         do {
-            let type = try await feed.activityType(named: typeName, session: session)
-            let api = try session.makeClient()
-            let ownerID = try await session.ensureUserID()
-            let createdID = try await api.createDoneActivity(
-                type: type, subject: subject ?? type.name, date: Date(), ownerID: ownerID,
-                dealID: item.activity.dealID, orgID: item.orgID, personID: item.person?.id ?? item.activity.personID,
-                note: note
-            )
-            feed.invalidateTags(for: item)
-            show(Toast(message: "✅ « \(subject ?? type.name) » enregistré pour \(item.clientName)") {
-                await undoActivity(createdID, for: item)
-            })
-            // Ensuite : fiche Pipedrive (affaire, sinon personne, sinon société).
-            open(pipedriveLink(for: item), failure: "Aucune fiche Pipedrive liée à cette activité.")
+            let logged = try await createDoneActivity(type: typeName, subject: subject, note: nil, for: item)
+            rescheduleRequest = RescheduleRequest(item: item, logged: logged)
         } catch {
             showError(error.localizedDescription)
         }
+    }
+
+    /// « Debrief call » : « Call effectué » avec le compte rendu écrit dans l'app ; « Décaler l'alerte » s'ouvre à la
+    /// fermeture de la fenêtre. Renvoie le message d'erreur à afficher dans la fenêtre, nil si c'est enregistré.
+    private func saveDebrief(_ text: String, for item: ActivityItem) async -> String? {
+        do {
+            let logged = try await createDoneActivity(type: DebriefTemplate.typeName, subject: nil,
+                                                      note: DebriefTemplate.html(from: text), for: item)
+            pendingReschedule = RescheduleRequest(item: item, logged: logged)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    /// Crée dans Pipedrive une activité terminée datée de maintenant (type existant, texte par défaut = nom du type).
+    private func createDoneActivity(type typeName: String, subject: String?, note: String?,
+                                    for item: ActivityItem) async throws -> LoggedAlert {
+        let type = try await feed.activityType(named: typeName, session: session)
+        let api = try session.makeClient()
+        let ownerID = try await session.ensureUserID()
+        let label = subject ?? type.name
+        let createdID = try await api.createDoneActivity(
+            type: type, subject: label, date: Date(), ownerID: ownerID,
+            dealID: item.activity.dealID, orgID: item.orgID, personID: item.person?.id ?? item.activity.personID,
+            note: note
+        )
+        feed.invalidateTags(for: item)
+        return LoggedAlert(activityID: createdID, label: label)
     }
 
     // MARK: Glisser le bloc : « Note pour Claude », « Analyse devis »
@@ -640,13 +674,24 @@ struct ActivityListView: View {
         }
     }
 
-    private func undoActivity(_ id: Int, for item: ActivityItem) async {
+    /// « Annuler » de la fenêtre « Décaler l'alerte » : supprime l'alerte qui vient d'être enregistrée.
+    private func undoAction(for request: RescheduleRequest) -> (() async -> Bool)? {
+        guard let logged = request.logged else { return nil }
+        let item = request.item
+        return { await undoActivity(logged.activityID, for: item) }
+    }
+
+    /// Supprime l'activité qui vient d'être enregistrée ; vrai si c'est fait.
+    @discardableResult
+    private func undoActivity(_ id: Int, for item: ActivityItem) async -> Bool {
         do {
             try await session.makeClient().deleteActivity(id: id)
             feed.invalidateTags(for: item)
             show(Toast(message: "Activité annulée."))
+            return true
         } catch {
             showError(error.localizedDescription)
+            return false
         }
     }
 
@@ -730,4 +775,18 @@ private extension ActivityAction {
         if case .showLeexi = self { return true }
         return false
     }
+}
+
+/// Activité terminée qui vient d'être enregistrée (« Répondeur ON/OFF », « Call effectué »…), annulable depuis la
+/// fenêtre « Décaler l'alerte » qui s'ouvre ensuite.
+struct LoggedAlert: Hashable {
+    let activityID: Int
+    let label: String
+}
+
+/// Fenêtre « Décaler l'alerte » : ouverte par le bouton « Décaler la date », ou juste après une alerte enregistrée.
+struct RescheduleRequest: Identifiable {
+    let item: ActivityItem
+    var logged: LoggedAlert? = nil
+    var id: Int { item.id }
 }
