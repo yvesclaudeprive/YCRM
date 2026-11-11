@@ -586,11 +586,11 @@ struct ActivityListView: View {
 
     private func swipeActions(for item: ActivityItem) -> [SwipeAction] {
         [
-            SwipeAction(title: "Note pour\nClaude", icon: "bubble.left.and.text.bubble.right.fill", color: .purple) {
-                handle(.noteForClaude, for: item)
-            },
             SwipeAction(title: "Analyse\ndevis", icon: "doc.text.magnifyingglass", color: .signingOrange) {
                 handle(.showQuotes, for: item)
+            },
+            SwipeAction(title: "Note pour\nClaude", icon: "bubble.left.and.text.bubble.right.fill", color: .purple) {
+                handle(.noteForClaude, for: item)
             },
         ]
     }

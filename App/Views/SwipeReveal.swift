@@ -13,13 +13,16 @@ struct SwipeAction: Identifiable {
 /// Glisser le bloc vers la droite fait apparaître des boutons à gauche (demande d'Yves du 08/11/2026) ;
 /// glisser vers la gauche ou toucher le bloc referme. Seuls les gestes nettement horizontaux comptent :
 /// le défilement vertical de la liste n'est pas gêné.
+/// Boutons = petites pastilles rondes + libellé, en haut à gauche, façon app Mail (choix d'Yves du 11/11/2026 :
+/// plus de grands boutons sur toute la hauteur) ; toute la colonne sous la pastille reste touchable.
 struct SwipeReveal<Content: View>: View {
     let actions: [SwipeAction]
     @Binding var isOpen: Bool
     @ViewBuilder let content: Content
 
     @State private var drag: CGFloat = 0
-    private let buttonWidth: CGFloat = 92
+    private let buttonWidth: CGFloat = 78
+    private let pillSize: CGFloat = 52
 
     private var revealWidth: CGFloat { CGFloat(actions.count) * buttonWidth }
 
@@ -36,7 +39,7 @@ struct SwipeReveal<Content: View>: View {
             }
             .offset(x: offset)
             .background(alignment: .leading) {
-                HStack(spacing: 8) {
+                HStack(spacing: 0) {
                     ForEach(actions) { action in
                         Button {
                             close()
@@ -44,22 +47,26 @@ struct SwipeReveal<Content: View>: View {
                         } label: {
                             VStack(spacing: 6) {
                                 Image(systemName: action.icon)
-                                    .font(.title3.weight(.semibold))
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: pillSize, height: pillSize)
+                                    .background(Circle().fill(action.color.gradient))
+                                    .shadow(color: action.color.opacity(0.35), radius: 6, x: 0, y: 3)
                                 Text(action.title)
-                                    .font(.caption.weight(.semibold))
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.primary)
                                     .multilineTextAlignment(.center)
                                     .lineLimit(2)
                                     .minimumScaleFactor(0.8)
                             }
-                            .foregroundStyle(.white)
-                            .frame(width: buttonWidth - 8)
-                            .frame(maxHeight: .infinity)
-                            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(action.color.gradient))
+                            .padding(.top, 14)
+                            .frame(width: buttonWidth)
+                            .frame(maxHeight: .infinity, alignment: .top)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(PressableStyle())
                     }
                 }
-                .padding(.vertical, 6)
                 .opacity(offset > 12 ? 1 : 0)
                 .accessibilityHidden(!isOpen)
             }
@@ -84,7 +91,7 @@ struct SwipeReveal<Content: View>: View {
                 let horizontal = abs(dx) > abs(dy) * 1.5
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                     if horizontal {
-                        isOpen = isOpen ? !(dx < -40 || predicted < -120) : (dx > 60 || predicted > 160)
+                        isOpen = isOpen ? !(dx < -40 || predicted < -120) : (dx > 44 || predicted > 120)
                     }
                     drag = 0
                 }
