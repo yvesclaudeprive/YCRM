@@ -44,6 +44,8 @@ public enum KeywordHighlight {
         #"pmax|shopping|merchant|gsc|ga4|ga|gtm|gmb|analytics|looker|matomo|tracking|attribution|ss"#,
         #"audits?|diag(?:nostic)?s?|s[ée]cu(?:rit[ée])?|technique|perf|performances?|speed|fixe|local|international"#,
         #"sites?|web|refonte|versions?|migrations?|cr[ée]ation|conception|maintenance|h[ée]bergement|ftp|bo|cloudflare|bazaarvoice"#,
+        // Abréviations d'Yves : MEV = montée de version, MAJ = mise à jour, PS = PrestaShop (demande du 11/11/2026).
+        #"mev|maj|ps|vitesse|klaviyo"#,
         #"netlinking|bl|backlinks?|contenus?|r[ée]daction|acquis|acquisition|campagnes?|strat[ée]gie|accompagnement|formation"#,
         #"dev|d[ée]veloppements?|[ée]volutions?|[ée]volutive|tickets?|plateforme|marketplace|b2b|b2c"#,
         #"ux|ui|e-?commerce|applications?|app|appli|wordpress|shopify|prestashop|webflow|magento|woocommerce|drupal"#,

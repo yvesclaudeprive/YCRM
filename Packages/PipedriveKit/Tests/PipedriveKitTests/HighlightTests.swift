@@ -42,6 +42,8 @@ final class HighlightTests: XCTestCase {
         XCTAssertEqual(words("devis SEO à la perf > relance"), ["devis SEO à la perf"])
         XCTAssertEqual(words("devis secu + devis beug // reparler CRO"), ["devis secu", "devis beug"])
         XCTAssertEqual(words("devis correctifs et maquettes à valider"), ["devis correctifs et maquettes"])
+        XCTAssertEqual(words("Devis MEV à relancer"), ["Devis MEV"])
+        XCTAssertEqual(words("devis MAJ PS + vitesse // rappeler"), ["devis MAJ PS + vitesse"])
         // Jamais d'une ligne à l'autre.
         XCTAssertEqual(words("devis\nSEO"), ["devis"])
     }
