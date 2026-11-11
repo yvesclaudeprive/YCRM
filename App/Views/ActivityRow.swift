@@ -2,7 +2,7 @@ import SwiftUI
 import PipedriveKit
 
 enum ActivityAction {
-    case open, openOrganization, openPerson
+    case open
     // Alertes : activité terminée créée dans Pipedrive
     case debriefCall, voicemailEmpty, voicemailOnOff, whatsappSent, messageColleagues, smsSent
     // Contacter : ouvre une autre app
@@ -100,23 +100,21 @@ struct ActivityRow: View {
     private var details: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .center, spacing: 8) {
-                if let name = item.organizationName, item.orgID != nil {
-                    linkButton(name, font: .system(.title3, design: .rounded).weight(.bold),
-                               textColor: .primary, iconColor: .primary, action: .openOrganization)
-                } else {
-                    Text(item.organizationName ?? "Sans société")
-                        .font(.system(.title3, design: .rounded).weight(.bold))
-                        .foregroundStyle(Color.primary)
-                        .lineLimit(1)
-                }
+                // Société et personne sans lien à part (demande d'Yves du 11/11/2026) : toucher le bloc ouvre l'affaire.
+                Text(item.organizationName ?? "Sans société")
+                    .font(.system(.title3, design: .rounded).weight(.bold))
+                    .foregroundStyle(Color.primary)
+                    .lineLimit(1)
                 Spacer(minLength: 4)
                 scoreBadge
             }
             // Personne et date sur la même ligne.
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if let name = item.person?.name {
-                    linkButton(name, font: .subheadline.weight(.medium), textColor: .secondary, iconColor: .secondary,
-                               action: .openPerson)
+                    Text(name)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 } else {
                     Text("Sans contact")
                         .font(.subheadline)
@@ -273,26 +271,6 @@ struct ActivityRow: View {
         .fixedSize()
         .layoutPriority(1)
         .accessibilityElement(children: .combine)
-    }
-
-    /// Nom cliquable (ouvre la fiche Pipedrive) suivi d'un petit symbole de lien.
-    private func linkButton(_ title: String, font: Font, textColor: Color, iconColor: Color,
-                            action: ActivityAction) -> some View {
-        Button {
-            perform(action)
-        } label: {
-            HStack(spacing: 4) {
-                Text(title)
-                    .font(font)
-                    .foregroundStyle(textColor)
-                    .lineLimit(1)
-                Image(systemName: "arrow.up.right.square")
-                    .font(.caption)
-                    .foregroundStyle(iconColor)
-            }
-        }
-        .buttonStyle(.borderless)
-        .accessibilityHint("Ouvrir la fiche dans Pipedrive")
     }
 
     @ViewBuilder

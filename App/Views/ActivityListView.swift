@@ -388,12 +388,6 @@ struct ActivityListView: View {
             open(meeting.calendarURL, failure: "Google Agenda n'a pas pu s'ouvrir.")
         case .explain(let reason):
             explanation = reason
-        case .openOrganization:
-            open(item.orgID.flatMap { ActionLinks.pipedriveOrganization(domain: session.companyDomain, id: $0) },
-                 failure: "Aucune société liée à cette activité.")
-        case .openPerson:
-            open((item.person?.id ?? item.activity.personID).flatMap { ActionLinks.pipedrivePerson(domain: session.companyDomain, id: $0) },
-                 failure: "Aucune personne liée à cette activité.")
         // Alertes : activité terminée datée du clic (texte par défaut = nom du type)
         case .voicemailEmpty:
             Task { await logDoneActivity(type: "Répondeur sans message", for: item) }
