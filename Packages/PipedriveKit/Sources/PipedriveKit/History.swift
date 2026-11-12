@@ -241,19 +241,23 @@ public struct PipedriveNote: Hashable, Sendable, Identifiable {
     public let addTime: String?
     public let userID: Int?
     public let authorName: String?
+    /// Affaire de la note (nil : note de la personne ou de la société seulement).
+    public let dealID: Int?
 
-    public init(id: Int, html: String, addTime: String?, userID: Int?, authorName: String?) {
+    public init(id: Int, html: String, addTime: String?, userID: Int?, authorName: String?, dealID: Int? = nil) {
         self.id = id
         self.html = html
         self.addTime = addTime
         self.userID = userID
         self.authorName = authorName
+        self.dealID = dealID
     }
 
     init?(json: JSONValue) {
         guard let id = json["id"].intValue else { return nil }
         self.init(id: id, html: json["content"].stringValue ?? "", addTime: json["add_time"].stringValue,
-                  userID: json["user_id"].intValue, authorName: json["user"]["name"].stringValue)
+                  userID: json["user_id"].intValue, authorName: json["user"]["name"].stringValue,
+                  dealID: json["deal_id"].intValue)
     }
 
     public var date: Date? { addTime.flatMap(FrenchFormat.parseInstant) }
@@ -438,6 +442,30 @@ public enum PlainText {
 
 /// Dernières notes, activités commentées et appels Leexi liés à une activité (affaire, personne, société).
 /// Seuls les éléments de l'utilisateur à qui l'activité est attribuée sont gardés (pas les appels des collègues).
+/// Périmètre de l'historique d'une affaire (demande d'Yves du 12/11/2026 : « il faut se focus sur l'affaire en
+/// question », des éléments de 2019 d'une autre affaire de la même société remontaient) : les notes et activités
+/// d'une **autre affaire** sont exclues ; celles rattachées seulement à la personne ou à la société ne comptent qu'à
+/// partir de `leadDays` jours avant la création de l'affaire (le 1er appel précède souvent la création de l'affaire).
+/// Sans affaire (activité rattachée à une personne ou une société), rien n'est filtré.
+public struct HistoryScope: Sendable {
+    public static let leadDays = 30
+    public let dealID: Int?
+    public let since: Date?
+
+    public init(dealID: Int?, dealCreated: Date?) {
+        self.dealID = dealID
+        self.since = dealID == nil ? nil : dealCreated.map { $0.addingTimeInterval(-Double(Self.leadDays) * 86_400) }
+    }
+
+    /// Élément rattaché à `otherDeal` (nil : à la personne ou la société seulement), daté de `date`.
+    public func includes(deal otherDeal: Int?, date: Date?) -> Bool {
+        guard let dealID else { return true }
+        if let otherDeal { return otherDeal == dealID }
+        guard let since, let date else { return true }
+        return date >= since
+    }
+}
+
 public struct HistoryLoader: Sendable {
     let client: PipedriveClient
 
@@ -450,6 +478,7 @@ public struct HistoryLoader: Sendable {
         let dealID = item.activity.dealID
         let personID = item.person?.id ?? item.activity.personID
         let orgID = item.orgID
+        let scope = HistoryScope(dealID: dealID, dealCreated: item.deal?.id == dealID ? item.deal?.createdAt : nil)
 
         let activityFilter: (String, Int)? = dealID.map { ("deal_id", $0) }
             ?? personID.map { ("person_id", $0) } ?? orgID.map { ("org_id", $0) }
@@ -457,7 +486,7 @@ public struct HistoryLoader: Sendable {
         async let personNotes = notes("person_id", personID)
         async let orgNotes = notes("org_id", orgID)
         async let related = activities(activityFilter)
-        // Appels et messages laissés au contact rattachés à lui seul (ou à une autre affaire) : tentatives pour l'avoir.
+        // Appels et messages du contact rattachés à lui seul (tentatives pour l'avoir), filtrés par `HistoryScope`.
         async let personRelated = personActivities(personID, besides: dealID)
 
         var seenNotes = Set<Int>()
@@ -465,6 +494,7 @@ public struct HistoryLoader: Sendable {
         var calls: [LeexiCall] = []
         let allNotes = try await dealNotes + personNotes + orgNotes
         for note in allNotes where seenNotes.insert(note.id).inserted {
+            guard scope.includes(deal: note.dealID, date: note.date) else { continue }
             if note.isLeexi {
                 if LeexiCall.involves(note, userID: ownerID, email: ownerEmail) { calls.append(LeexiCall(note: note, now: now)) }
                 continue
@@ -478,11 +508,11 @@ public struct HistoryLoader: Sendable {
         let dealActivities = try await related
         var seenActivities = Set(dealActivities.map(\.id))
         let personList = await personRelated
+        // Seulement les appels et messages du contact sans affaire, depuis le début de cette affaire (`HistoryScope`).
         let extraActivities = personList.filter { activity in
             guard seenActivities.insert(activity.id).inserted else { return false }
-            if activity.dealID == nil { return true }
-            let kind = HistoryKind(activityType: activity.type, name: typeNames[activity.type] ?? activity.type)
-            return [.call, .voicemail, .message].contains(kind)
+            return activity.dealID == nil
+                && scope.includes(deal: nil, date: activity.dueInstant ?? activity.addTime.flatMap(FrenchFormat.parseInstant))
         }
         let mine = (dealActivities + extraActivities).filter { activity in
             guard let ownerID, let activityOwner = activity.ownerID else { return true }

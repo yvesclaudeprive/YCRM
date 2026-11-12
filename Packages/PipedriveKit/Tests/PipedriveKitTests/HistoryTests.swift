@@ -213,6 +213,56 @@ final class HistoryTests: XCTestCase {
         XCTAssertEqual(query(activitiesRequest, "sort_direction"), "desc")
     }
 
+    /// Historique centré sur l'affaire (demande d'Yves du 12/11/2026) : rien d'une autre affaire, et rien de la personne
+    /// ou de la société d'avant l'affaire (30 jours de marge pour le 1er appel). Données fictives.
+    func testHistoryStaysOnTheDeal() async throws {
+        let notes = """
+        {"success":true,"data":[
+          {"id":201,"content":"Note de cette affaire","add_time":"2026-10-01 09:00:00","user_id":7,"deal_id":100,"user":{"name":"Moi"}},
+          {"id":202,"content":"Ancienne affaire de 2019","add_time":"2019-03-01 09:00:00","user_id":7,"deal_id":555,"user":{"name":"Moi"}},
+          {"id":203,"content":"Note société de 2019","add_time":"2019-04-01 09:00:00","user_id":7,"deal_id":null,"user":{"name":"Moi"}},
+          {"id":204,"content":"Note contact juste avant l'affaire","add_time":"2026-05-20 09:00:00","user_id":7,"deal_id":null,"user":{"name":"Moi"}},
+          {"id":205,"content":"<a href=\\"https://app.leexi.ai/fr/calls/old-1\\">Appel 2019</a><p>(moi@example.com)</p><b>Résumé de l'appel:</b><p>Autre projet</p>","add_time":"2019-05-01 10:00:00","user_id":9,"deal_id":555,"user":{"name":"Intégration Leexi"}}
+        ]}
+        """
+        let personActivities = """
+        {"success":true,"data":[
+          {"id":301,"subject":"Missed call","type":"aircall_missed_call_withou","due_date":"2026-10-02","due_time":"16:00","deal_id":null,"person_id":200,"done":true,"owner_id":7,"note":"Missed call<br>Waiting time: 00:00:14"},
+          {"id":302,"subject":"Appel autre affaire","type":"aircall_missed_call_withou","due_date":"2026-10-03","due_time":"16:00","deal_id":555,"person_id":200,"done":true,"owner_id":7,"note":"Waiting time: 00:00:05"},
+          {"id":303,"subject":"Missed call 2019","type":"aircall_missed_call_withou","due_date":"2019-06-02","due_time":"16:00","deal_id":null,"person_id":200,"done":true,"owner_id":7,"note":"Waiting time: 00:00:09"}
+        ]}
+        """
+        let transport = MockTransport([
+            "GET /api/v1/notes": .init(status: 200, body: notes),
+            "GET /api/v2/activities": .init(status: 200, body: #"{"success":true,"data":[]}"#),
+            "GET /api/v2/activities?person_id=200": .init(status: 200, body: personActivities),
+        ])
+        let activity = Activity(id: 1, subject: "Relancer", type: "task", dueDate: "2026-11-07", dueTime: nil,
+                                dealID: 100, personID: 200, orgID: 300, done: false, ownerID: 7)
+        let deal = DealSummary(id: 100, title: "Refonte", orgID: 300, personID: 200, score: nil, status: "open",
+                               addTime: "2026-06-10T08:00:00Z")
+        let item = ActivityItem(activity: activity, organizationName: "Entreprise Alpha", person: nil, deal: deal)
+        let now = Date(timeIntervalSince1970: 1_794_056_000) // 07/11/2026
+        let bundle = try await HistoryLoader(client: client(transport)).load(
+            for: item, typeNames: [:], ownerID: 7, ownerEmail: "moi@example.com", now: now)
+        XCTAssertEqual(bundle.entries.map(\.id), ["activity-301", "note-201", "note-204"],
+                       "autre affaire et éléments d'avant l'affaire (au-delà de 30 jours) exclus")
+        XCTAssertTrue(bundle.leexi.isEmpty, "compte rendu Leexi d'une autre affaire exclu")
+    }
+
+    func testHistoryScope() {
+        let created = Date(timeIntervalSince1970: 1_780_000_000)
+        let scope = HistoryScope(dealID: 100, dealCreated: created)
+        XCTAssertTrue(scope.includes(deal: 100, date: .distantPast), "élément de l'affaire : toujours")
+        XCTAssertFalse(scope.includes(deal: 555, date: created), "autre affaire : jamais")
+        XCTAssertTrue(scope.includes(deal: nil, date: created.addingTimeInterval(-29 * 86_400)))
+        XCTAssertFalse(scope.includes(deal: nil, date: created.addingTimeInterval(-31 * 86_400)))
+        XCTAssertTrue(HistoryScope(dealID: 100, dealCreated: nil).includes(deal: nil, date: .distantPast),
+                      "date de création inconnue : pas de borne")
+        XCTAssertTrue(HistoryScope(dealID: nil, dealCreated: created).includes(deal: 555, date: .distantPast),
+                      "activité sans affaire : rien n'est filtré")
+    }
+
     func testHistoryDeduplicatesNotesAcrossDealAndPerson() async throws {
         // Même réponse pour toutes les requêtes de notes : la note 71 ne doit apparaître qu'une fois.
         let transport = MockTransport([

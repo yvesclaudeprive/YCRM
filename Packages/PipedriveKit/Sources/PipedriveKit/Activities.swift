@@ -167,9 +167,11 @@ public struct DealSummary: Hashable, Sendable, Identifiable {
     public let signedDate: String?
     /// Champ d'affaire « Devis en attente » : analyse des devis écrite par Claude deux fois par jour (`QuoteAnalysis`).
     public let quoteAnalysis: String?
+    /// Création de l'affaire (format API) : borne de l'historique de l'affaire (`HistoryScope`).
+    public let addTime: String?
 
     public init(id: Int, title: String, orgID: Int?, personID: Int?, score: Double?, status: String? = nil,
-                wonTime: String? = nil, signedDate: String? = nil, quoteAnalysis: String? = nil) {
+                wonTime: String? = nil, signedDate: String? = nil, quoteAnalysis: String? = nil, addTime: String? = nil) {
         self.id = id
         self.title = title
         self.orgID = orgID
@@ -179,7 +181,11 @@ public struct DealSummary: Hashable, Sendable, Identifiable {
         self.wonTime = wonTime
         self.signedDate = signedDate
         self.quoteAnalysis = quoteAnalysis
+        self.addTime = addTime
     }
+
+    /// Date de création de l'affaire.
+    public var createdAt: Date? { addTime.flatMap(FrenchFormat.parseInstant) }
 
     /// Affaire en cours (ni gagnée ni perdue) ; vrai si le statut est inconnu.
     public var isOpen: Bool { status == nil || status == "open" }
@@ -205,7 +211,8 @@ public struct DealSummary: Hashable, Sendable, Identifiable {
         }
         self.init(id: id, title: json["title"].stringValue ?? "Affaire #\(id)", orgID: json["org_id"].intValue,
                   personID: json["person_id"].intValue, score: score, status: json["status"].stringValue,
-                  wonTime: json["won_time"].stringValue, signedDate: signed, quoteAnalysis: analysis)
+                  wonTime: json["won_time"].stringValue, signedDate: signed, quoteAnalysis: analysis,
+                  addTime: json["add_time"].stringValue)
     }
 }
 
