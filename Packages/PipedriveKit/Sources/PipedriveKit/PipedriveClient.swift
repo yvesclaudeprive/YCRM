@@ -209,6 +209,19 @@ public struct PipedriveClient: Sendable {
         try await batch("/api/v2/persons", ids: ids).compactMap(PersonContact.init(json:))
     }
 
+    /// « Autres contacts » de la fenêtre des numéros (demande d'Yves du 13/11/2026) : les contacts de la société,
+    /// sans la personne déjà affichée, par ordre alphabétique.
+    public func persons(organizationID: Int, excluding personID: Int? = nil) async throws -> [PersonContact] {
+        let response = try await send("GET", "/api/v2/persons", query: [
+            URLQueryItem(name: "org_id", value: String(organizationID)),
+            URLQueryItem(name: "limit", value: "100"),
+        ])
+        return (response["data"].arrayValue ?? [])
+            .compactMap(PersonContact.init(json:))
+            .filter { $0.id != personID }
+            .sorted { Label.normalized($0.name) < Label.normalized($1.name) }
+    }
+
     /// Noms des sociétés, par identifiant.
     public func organizationNames(ids: [Int]) async throws -> [Int: String] {
         var names: [Int: String] = [:]

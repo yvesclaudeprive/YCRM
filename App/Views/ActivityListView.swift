@@ -11,8 +11,27 @@ struct ContactPicker: Identifiable {
         var note: String?
     }
 
+    /// Haut de la fenêtre des numéros (demande d'Yves du 13/11/2026) : le nom de la personne, sa fiche Pipedrive,
+    /// un mail et les autres contacts de la société.
+    struct Card {
+        let name: String
+        let organization: String?
+        let profileURL: URL?
+        let emails: [String]
+        /// Contacts de la société, sans la personne affichée (nil : pas de société).
+        let colleagues: (() async throws -> [PersonContact])?
+        /// Numéro utilisable avec ce bouton (ex. pas de fixe pour WhatsApp).
+        let isUsable: (String) -> Bool
+        /// Appelle (ou écrit à) un numéro avec le même bouton que celui touché.
+        let call: (String) -> Void
+        let open: (URL?) -> Void
+        let personURL: (Int) -> URL?
+        let mailURL: (String) -> URL?
+    }
+
     let id = UUID()
     let title: String
+    var card: Card? = nil
     let choices: [Choice]
     let onPick: (String) -> Void
 }
@@ -165,8 +184,8 @@ struct ActivityListView: View {
                 rescheduleRequest = next
             }
         }) { item in
-            DebriefSheet(item: item) { text in
-                await saveDebrief(text, for: item)
+            DebriefSheet(item: item) { runs in
+                await saveDebrief(runs, for: item)
             }
         }
         .sheet(item: $meetingItem, onDismiss: {
@@ -483,6 +502,7 @@ struct ActivityListView: View {
         }
         picker = ContactPicker(
             title: title,
+            card: contactCard(for: item, channel: channel),
             choices: numbers.map { number in
                 let mobile = PhoneNumber.isLikelyMobile(number.e164)
                 let allowed = channel != .whatsapp || mobile
@@ -493,6 +513,32 @@ struct ActivityListView: View {
         ) { number in
             call(channel, number)
         }
+    }
+
+    /// Haut de la fenêtre des numéros : la personne, sa fiche, un mail, les autres contacts de la société.
+    private func contactCard(for item: ActivityItem, channel: CallChannel) -> ContactPicker.Card? {
+        guard let person = item.person else { return nil }
+        let domain = session.companyDomain
+        let client = try? session.makeClient()
+        var colleagues: (() async throws -> [PersonContact])?
+        if let orgID = item.orgID {
+            colleagues = {
+                guard let client else { throw PipedriveError.validation("Connexion Pipedrive à vérifier dans Réglages") }
+                return try await client.persons(organizationID: orgID, excluding: person.id)
+            }
+        }
+        return ContactPicker.Card(
+            name: person.name,
+            organization: item.organizationName,
+            profileURL: ActionLinks.pipedrivePerson(domain: domain, id: person.id),
+            emails: item.emailAddresses.map { $0.address },
+            colleagues: colleagues,
+            isUsable: { channel != .whatsapp || PhoneNumber.isLikelyMobile($0) },
+            call: { call(channel, $0) },
+            open: { open($0, failure: "Ce lien n'a pas pu s'ouvrir.") },
+            personURL: { ActionLinks.pipedrivePerson(domain: domain, id: $0) },
+            mailURL: { ActionLinks.mailto(to: $0) }
+        )
     }
 
     private func call(_ channel: CallChannel, _ number: String) {
@@ -579,10 +625,10 @@ struct ActivityListView: View {
 
     /// « Debrief call » : « Call effectué » avec le compte rendu écrit dans l'app ; « Décaler l'alerte » s'ouvre à la
     /// fermeture de la fenêtre. Renvoie le message d'erreur à afficher dans la fenêtre, nil si c'est enregistré.
-    private func saveDebrief(_ text: String, for item: ActivityItem) async -> String? {
+    private func saveDebrief(_ runs: [DebriefRun], for item: ActivityItem) async -> String? {
         do {
             let logged = try await createDoneActivity(type: DebriefTemplate.typeName, subject: nil,
-                                                      note: DebriefTemplate.html(from: text), for: item)
+                                                      note: DebriefTemplate.html(from: runs), for: item)
             pendingReschedule = RescheduleRequest(item: item, logged: logged)
             return nil
         } catch {
@@ -753,38 +799,255 @@ struct ActivityListView: View {
     }
 }
 
-/// Liste des numéros ou adresses, avec ceux qui ne conviennent pas grisés (ex. fixes pour WhatsApp).
+/// Liste des numéros ou adresses, avec ceux qui ne conviennent pas grisés (ex. fixes pour WhatsApp). Pour les
+/// numéros, le haut de la fenêtre montre la personne : sa fiche Pipedrive, un mail, les autres contacts de la société.
 struct ChoiceSheet: View {
     let picker: ContactPicker
     @Environment(\.dismiss) private var dismiss
+    @State private var showColleagues = false
 
     var body: some View {
         NavigationStack {
-            List(picker.choices, id: \.self) { choice in
-                Button {
-                    dismiss()
-                    picker.onPick(choice.value)
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(choice.display)
-                            .foregroundStyle(choice.isEnabled ? Color.primary : Color.secondary)
-                        Text([choice.label, choice.note].compactMap { $0 }.joined(separator: " · "))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+            List {
+                if let card = picker.card {
+                    Section {
+                        ContactCardHeader(card: card, showColleagues: $showColleagues, finish: finish)
                     }
+                    Section("Numéros") {
+                        choiceRows
+                    }
+                } else {
+                    choiceRows
                 }
-                .disabled(!choice.isEnabled)
             }
             .navigationTitle(picker.title)
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(isPresented: $showColleagues) {
+                if let card = picker.card {
+                    ColleaguesView(card: card, finish: finish)
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Annuler") { dismiss() }
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents(detents)
         .presentationBackground(.background)
+    }
+
+    private var detents: Set<PresentationDetent> {
+        picker.card == nil ? [.medium, .large] : [.large]
+    }
+
+    @ViewBuilder
+    private var choiceRows: some View {
+        ForEach(picker.choices, id: \.self) { choice in
+            Button {
+                dismiss()
+                picker.onPick(choice.value)
+            } label: {
+                ChoiceRowLabel(choice: choice)
+            }
+            .disabled(!choice.isEnabled)
+        }
+    }
+
+    /// Ferme la fenêtre puis lance l'action (appel, fiche, mail).
+    private func finish(_ action: @escaping () -> Void) {
+        dismiss()
+        action()
+    }
+}
+
+private struct ChoiceRowLabel: View {
+    let choice: ContactPicker.Choice
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(choice.display)
+                .foregroundStyle(choice.isEnabled ? Color.primary : Color.secondary)
+            Text([choice.label, choice.note].compactMap { $0 }.joined(separator: " · "))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// Nom de la personne en grand, puis trois boutons bien visibles : sa fiche Pipedrive, un mail, les autres contacts.
+private struct ContactCardHeader: View {
+    let card: ContactPicker.Card
+    @Binding var showColleagues: Bool
+    let finish: (@escaping () -> Void) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(card.name)
+                    .font(.title2.weight(.bold))
+                if let organization = card.organization, !organization.isEmpty {
+                    Text(organization)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            HStack(spacing: 10) {
+                Button {
+                    finish { card.open(card.profileURL) }
+                } label: {
+                    CardActionLabel(title: "Fiche Pipedrive", icon: "person.crop.circle.fill",
+                                    color: ButtonRowStyle.alerts.color, enabled: card.profileURL != nil)
+                }
+                .buttonStyle(.borderless)
+                .disabled(card.profileURL == nil)
+
+                if card.emails.count > 1 {
+                    Menu {
+                        ForEach(card.emails, id: \.self) { address in
+                            Button(address) {
+                                finish { card.open(card.mailURL(address)) }
+                            }
+                        }
+                    } label: {
+                        CardActionLabel(title: "Envoyer un mail", icon: "envelope.fill",
+                                        color: ButtonRowStyle.mails.color, enabled: true)
+                    }
+                    .buttonStyle(.borderless)
+                } else {
+                    Button {
+                        if let address = card.emails.first {
+                            finish { card.open(card.mailURL(address)) }
+                        }
+                    } label: {
+                        CardActionLabel(title: "Envoyer un mail", icon: "envelope.fill",
+                                        color: ButtonRowStyle.mails.color, enabled: !card.emails.isEmpty)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(card.emails.isEmpty)
+                }
+
+                Button {
+                    showColleagues = true
+                } label: {
+                    CardActionLabel(title: "Autres contacts", icon: "person.2.fill",
+                                    color: ButtonRowStyle.contact.color, enabled: card.colleagues != nil)
+                }
+                .buttonStyle(.borderless)
+                .disabled(card.colleagues == nil)
+            }
+        }
+        .padding(.vertical, 6)
+    }
+}
+
+/// Bouton façon app Contacts : pastille ronde et libellé dessous.
+private struct CardActionLabel: View {
+    let title: String
+    let icon: String
+    let color: Color
+    let enabled: Bool
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(enabled ? color : Color.gray.opacity(0.45)))
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .foregroundStyle(enabled ? Color.primary : Color.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill((enabled ? color : Color.gray).opacity(0.1)))
+    }
+}
+
+/// « Autres contacts » : les contacts de la société, avec leurs numéros (même bouton que celui touché), leurs
+/// adresses et leur fiche Pipedrive.
+private struct ColleaguesView: View {
+    let card: ContactPicker.Card
+    let finish: (@escaping () -> Void) -> Void
+    @State private var people: [PersonContact]?
+    @State private var error: String?
+
+    var body: some View {
+        List {
+            if let people {
+                if people.isEmpty {
+                    Text("Aucun autre contact pour cette société dans Pipedrive.")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(people) { person in
+                    Section {
+                        Button {
+                            finish { card.open(card.personURL(person.id)) }
+                        } label: {
+                            HStack {
+                                Text(person.name)
+                                    .font(.headline)
+                                    .foregroundStyle(Color.primary)
+                                Spacer()
+                                Label("Fiche", systemImage: "person.crop.circle")
+                                    .font(.subheadline)
+                                    .foregroundStyle(ButtonRowStyle.alerts.color)
+                            }
+                        }
+                        ForEach(numbers(of: person), id: \.self) { choice in
+                            Button {
+                                finish { card.call(choice.value) }
+                            } label: {
+                                ChoiceRowLabel(choice: choice)
+                            }
+                            .disabled(!choice.isEnabled)
+                        }
+                        ForEach(person.emails, id: \.self) { email in
+                            Button {
+                                finish { card.open(card.mailURL(email.value)) }
+                            } label: {
+                                Label(email.value, systemImage: "envelope")
+                                    .foregroundStyle(Color.primary)
+                            }
+                        }
+                    }
+                }
+            } else if let error {
+                Text(error)
+                    .foregroundStyle(Color.yateoRed)
+            } else {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                    Spacer()
+                }
+            }
+        }
+        .navigationTitle(card.organization ?? "Autres contacts")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await load() }
+    }
+
+    private func numbers(of person: PersonContact) -> [ContactPicker.Choice] {
+        person.callableNumbers.map { number in
+            let usable = card.isUsable(number.e164)
+            return ContactPicker.Choice(label: number.label, display: PhoneNumber.display(number.e164),
+                                        value: number.e164, isEnabled: usable,
+                                        note: usable ? nil : "pas de WhatsApp (fixe)")
+        }
+    }
+
+    private func load() async {
+        guard people == nil, let colleagues = card.colleagues else { return }
+        do {
+            people = try await colleagues()
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 }
 

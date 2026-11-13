@@ -90,9 +90,7 @@ public extension ActivityItem {
 
     /// Numéros appelables (format international), principal d'abord.
     var phoneNumbers: [(label: String, e164: String)] {
-        (person?.phones ?? []).compactMap { point in
-            PhoneNumber.e164(point.value).map { (label: point.displayLabel, e164: $0) }
-        }
+        person?.callableNumbers ?? []
     }
 
     /// Numéros probablement mobiles (WhatsApp).

@@ -132,7 +132,7 @@ final class ClientTests: XCTestCase {
         let sent = try decode(String(decoding: try XCTUnwrap(recorded.first?.httpBody), as: UTF8.self))
         XCTAssertEqual(sent["type"], .string("call_effectue"))
         XCTAssertEqual(sent["subject"], .string("Call effectué"))
-        XCTAssertEqual(sent["note"], .string("<p>Je l'ai eu au téléphone et :</p><ul><li>x</li></ul>"))
+        XCTAssertEqual(sent["note"], .string("<b>Je l'ai eu au téléphone et :</b><ul><li>x</li></ul>"))
         XCTAssertEqual(PlainText.from(html: DebriefTemplate.noteHTML), "Je l'ai eu au téléphone et :\n• x")
     }
 
@@ -143,9 +143,31 @@ final class ClientTests: XCTestCase {
         XCTAssertTrue(DebriefTemplate.hasContent(DebriefTemplate.starter + "OK pour un devis"))
         let text = "Je l'ai eu au téléphone et :\n• OK pour un devis SEO & SEA\n• budget < 2 000 €\n• \n\nRappeler lundi"
         XCTAssertEqual(DebriefTemplate.html(from: text),
-                       "<p>Je l'ai eu au téléphone et :</p><ul><li>OK pour un devis SEO &amp; SEA</li>"
-                       + "<li>budget &lt; 2 000 €</li></ul><p>Rappeler lundi</p>")
+                       "Je l'ai eu au téléphone et :<ul><li>OK pour un devis SEO &amp; SEA</li>"
+                       + "<li>budget &lt; 2 000 €</li></ul><div>Rappeler lundi</div>")
         XCTAssertEqual(DebriefTemplate.html(from: "- a\n* b"), "<ul><li>a</li><li>b</li></ul>")
+    }
+
+    /// « Autres contacts » de la fenêtre des numéros (demande d'Yves du 13/11/2026) : la société, sans la personne
+    /// déjà affichée, par ordre alphabétique (accents et majuscules ignorés).
+    func testOtherContactsOfTheOrganization() async throws {
+        let transport = MockTransport(["GET /api/v2/persons": .init(status: 200, body: #"""
+        {"success":true,"data":[
+          {"id":201,"name":"Élodie Test","org_id":300,"phones":[{"label":"mobile","value":"06 11 22 33 44","primary":true}],"emails":[]},
+          {"id":200,"name":"Camille Test","org_id":300,"phones":[],"emails":[]},
+          {"id":202,"name":"alain Test","org_id":300,"phones":[],"emails":[{"label":"work","value":"alain@example.com","primary":true}]}
+        ]}
+        """#)])
+        let people = try await PipedriveClient(configuration: config, transport: transport)
+            .persons(organizationID: 300, excluding: 200)
+        XCTAssertEqual(people.map(\.name), ["alain Test", "Élodie Test"])
+        XCTAssertEqual(people.last?.callableNumbers.first?.e164, "+33611223344")
+        XCTAssertEqual(people.last?.callableNumbers.first?.label, "Mobile")
+        XCTAssertEqual(people.first?.emails.first?.value, "alain@example.com")
+        let recorded = await transport.recorded
+        let request = try XCTUnwrap(recorded.first)
+        let items = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertTrue(items.contains(URLQueryItem(name: "org_id", value: "300")))
     }
 
     func testLastMailUsesFirstMessageOfThreadForGmailID() async throws {
