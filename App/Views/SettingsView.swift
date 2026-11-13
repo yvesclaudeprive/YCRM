@@ -142,7 +142,7 @@ struct SettingsView: View {
                     Button(session.isGoogleConnected ? "Reconnecter Google Agenda" : "Se connecter à Google Agenda") {
                         Task { await connectGoogle() }
                     }
-                    .disabled(GoogleOAuth.validClientID(googleClientID) == nil || googleBusy)
+                    .disabled(googleBusy)
                     if session.isGoogleConnected {
                         Button("Déconnecter Google Agenda", role: .destructive) {
                             Task {
@@ -259,7 +259,12 @@ struct SettingsView: View {
         googleMessage = nil
         defer { googleBusy = false }
         do {
+            guard GoogleOAuth.validClientID(googleClientID) != nil else {
+                googleMessage = GoogleOAuth.clientIDProblem(googleClientID)
+                return
+            }
             try session.saveGoogleClientID(googleClientID)
+            googleClientID = session.googleClientID
             let verifier = PKCE.verifier()
             let state = UUID().uuidString
             guard let url = GoogleOAuth.authorizationURL(clientID: session.googleClientID,

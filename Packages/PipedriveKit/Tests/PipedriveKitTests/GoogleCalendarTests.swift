@@ -17,6 +17,12 @@ final class GoogleCalendarTests: XCTestCase {
         XCTAssertEqual(GoogleOAuth.validClientID("  \(clientID) "), clientID)
         XCTAssertNil(GoogleOAuth.validClientID("pas un identifiant"))
         XCTAssertNil(GoogleOAuth.validClientID("https://exemple.com"))
+        // Texte collé plus long, forme « à l'envers », majuscules : l'ID est retrouvé (retour d'Yves du 13/11/2026).
+        XCTAssertEqual(GoogleOAuth.validClientID("Client ID : \"\(clientID)\"\n"), clientID)
+        XCTAssertEqual(GoogleOAuth.validClientID("com.googleusercontent.apps.123456-abcdef"), clientID)
+        XCTAssertEqual(GoogleOAuth.validClientID("123456-ABCDEF.apps.googleusercontent.com"), clientID)
+        XCTAssertNil(GoogleOAuth.validClientID("moi@example.com"))
+        XCTAssertTrue(GoogleOAuth.clientIDProblem("moi@example.com").contains("pas votre adresse e-mail"))
         XCTAssertEqual(GoogleOAuth.callbackScheme(clientID: clientID), "com.googleusercontent.apps.123456-abcdef")
         XCTAssertEqual(GoogleOAuth.redirectURI(clientID: clientID), "com.googleusercontent.apps.123456-abcdef:/oauth2redirect")
     }

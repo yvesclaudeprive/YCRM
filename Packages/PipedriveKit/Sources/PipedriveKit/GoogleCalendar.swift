@@ -16,12 +16,31 @@ public enum GoogleOAuth {
     static let tokenEndpoint = "https://oauth2.googleapis.com/token"
     static let revokeEndpoint = "https://oauth2.googleapis.com/revoke"
 
-    /// Identifiant d'un client OAuth Google : « 1234-abcd.apps.googleusercontent.com ».
+    /// Identifiant d'un client OAuth Google : « 1234-abcd.apps.googleusercontent.com ». Retrouvé aussi dans un texte
+    /// collé plus long (fichier de la console, guillemets, espaces) ou sous sa forme « à l'envers »
+    /// (« com.googleusercontent.apps.1234-abcd ») : retour d'Yves du 13/11/2026, le bouton restait grisé.
     public static func validClientID(_ text: String) -> String? {
+        let cleaned = text.replacingOccurrences(of: #"\s"#, with: "", options: .regularExpression)
+        if let range = cleaned.range(of: #"[0-9]+-[A-Za-z0-9_]+\.apps\.googleusercontent\.com"#,
+                                     options: [.regularExpression, .caseInsensitive]) {
+            return cleaned[range].lowercased()
+        }
+        if let range = cleaned.range(of: #"com\.googleusercontent\.apps\.[0-9]+-[A-Za-z0-9_]+"#,
+                                     options: [.regularExpression, .caseInsensitive]) {
+            let id = cleaned[range].dropFirst("com.googleusercontent.apps.".count)
+            return (id + ".apps.googleusercontent.com").lowercased()
+        }
+        return nil
+    }
+
+    /// Pourquoi le texte saisi n'est pas un ID client (une adresse e-mail est l'erreur la plus probable).
+    public static func clientIDProblem(_ text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.range(of: #"^[0-9]+-[A-Za-z0-9]+\.apps\.googleusercontent\.com$"#,
-                            options: .regularExpression) != nil else { return nil }
-        return trimmed
+        if trimmed.isEmpty { return "Collez d'abord l'ID client Google." }
+        if trimmed.contains("@") {
+            return "Ce champ attend l'ID client Google, pas votre adresse e-mail : console Google Cloud › Identifiants › ID client OAuth (type iOS), il se termine par « .apps.googleusercontent.com »."
+        }
+        return "Ce n'est pas un ID client Google : il ressemble à « 1234-abcd.apps.googleusercontent.com » (console Google Cloud › Identifiants › ID client OAuth de type iOS)."
     }
 
     /// Schéma de retour d'un client iOS : l'identifiant « à l'envers » (« com.googleusercontent.apps.1234-abcd »).
