@@ -16,6 +16,8 @@ private enum StorageKeys {
     static let onoffShortcut = "onoff-shortcut-name"
     static let claudeFireURL = "claude-fire-url"
     static let claudeToken = "claude-routine-token"
+    static let googleClientID = "google-client-id"
+    static let googleRefreshToken = "google-refresh-token"
 }
 
 /// Façon de lancer un appel OnOff (aucun lien officiel n'existe).
@@ -50,6 +52,10 @@ final class AppSession {
     /// Adresse de déclenchement de la tâche Claude « Note pour Claude » (pas secrète ; le jeton est au trousseau).
     private(set) var claudeFireURL: String
     private(set) var hasClaudeToken: Bool
+    /// Bouton « Créer un RDV » : identifiant du client OAuth Google (pas secret) ; jeton de renouvellement au trousseau.
+    private(set) var googleClientID: String
+    private(set) var isGoogleConnected: Bool
+    private var googleTokens: GoogleTokens?
 
     private let keychain: KeychainStore
     private let defaults = UserDefaults.standard
@@ -69,6 +75,64 @@ final class AppSession {
         onoffShortcutName = defaults.string(forKey: StorageKeys.onoffShortcut) ?? "YCRM OnOff"
         claudeFireURL = defaults.string(forKey: StorageKeys.claudeFireURL) ?? ""
         hasClaudeToken = !(store.read(StorageKeys.claudeToken) ?? "").isEmpty
+        googleClientID = defaults.string(forKey: StorageKeys.googleClientID) ?? ""
+        isGoogleConnected = !(store.read(StorageKeys.googleRefreshToken) ?? "").isEmpty
+    }
+
+    // MARK: Google Agenda (bouton « Créer un RDV »)
+
+    func makeGoogleClient() -> GoogleCalendarClient? {
+        GoogleOAuth.validClientID(googleClientID).map { GoogleCalendarClient(clientID: $0) }
+    }
+
+    /// Enregistre l'identifiant du client Google ; un autre identifiant déconnecte l'ancien.
+    func saveGoogleClientID(_ text: String) throws {
+        guard let clientID = GoogleOAuth.validClientID(text) else { throw GoogleCalendarError.notConfigured }
+        if clientID != googleClientID {
+            keychain.delete(StorageKeys.googleRefreshToken)
+            googleTokens = nil
+            isGoogleConnected = false
+        }
+        googleClientID = clientID
+        defaults.set(clientID, forKey: StorageKeys.googleClientID)
+    }
+
+    /// Termine la connexion Google : échange le code contre les jetons (renouvellement au trousseau).
+    func connectGoogle(code: String, verifier: String) async throws {
+        guard let client = makeGoogleClient() else { throw GoogleCalendarError.notConfigured }
+        let tokens = try await client.exchange(code: code, codeVerifier: verifier)
+        guard let refresh = tokens.refreshToken else { throw GoogleCalendarError.invalidCallback }
+        try keychain.save(refresh, account: StorageKeys.googleRefreshToken)
+        googleTokens = tokens
+        isGoogleConnected = true
+    }
+
+    /// Jeton d'accès Google valide (renouvelé si besoin). Jeton refusé : il faut se reconnecter dans Réglages.
+    func googleAccessToken() async throws -> String {
+        if let tokens = googleTokens, tokens.isValid() { return tokens.accessToken }
+        guard let client = makeGoogleClient(), let refresh = keychain.read(StorageKeys.googleRefreshToken) else {
+            throw GoogleCalendarError.notConfigured
+        }
+        do {
+            let tokens = try await client.refresh(refreshToken: refresh)
+            googleTokens = tokens
+            return tokens.accessToken
+        } catch GoogleCalendarError.reconnectNeeded {
+            keychain.delete(StorageKeys.googleRefreshToken)
+            googleTokens = nil
+            isGoogleConnected = false
+            throw GoogleCalendarError.reconnectNeeded
+        }
+    }
+
+    /// Révoque l'accès Google et l'oublie sur cet iPhone.
+    func disconnectGoogle() async {
+        if let client = makeGoogleClient(), let refresh = keychain.read(StorageKeys.googleRefreshToken) {
+            await client.revoke(token: refresh)
+        }
+        keychain.delete(StorageKeys.googleRefreshToken)
+        googleTokens = nil
+        isGoogleConnected = false
     }
 
     /// Claude prévenu en temps réel des « Notes pour Claude » : adresse et jeton enregistrés.

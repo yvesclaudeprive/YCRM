@@ -42,6 +42,9 @@ struct ActivityListView: View {
     @State private var rescheduleRequest: RescheduleRequest?
     /// Fenêtre « Debrief call » ouverte ; une fois le compte rendu enregistré, « Décaler l'alerte » s'ouvre ensuite.
     @State private var debriefItem: ActivityItem?
+    @State private var meetingItem: ActivityItem?
+    /// Brouillon du mail de confirmation, ouvert une fois la fenêtre « Créer un RDV » fermée.
+    @State private var pendingMeetingMail: URL?
     @State private var pendingReschedule: RescheduleRequest?
     /// Bloc glissé vers la droite (boutons « Note pour Claude » / « Analyse devis » visibles).
     @State private var swipedItemID: Int?
@@ -164,6 +167,25 @@ struct ActivityListView: View {
         }) { item in
             DebriefSheet(item: item) { text in
                 await saveDebrief(text, for: item)
+            }
+        }
+        .sheet(item: $meetingItem, onDismiss: {
+            if let mail = pendingMeetingMail {
+                pendingMeetingMail = nil
+                open(mail, failure: "Aucune app de messagerie n'a pu s'ouvrir.")
+            }
+        }) { item in
+            MeetingSheet(item: item, googleConnected: session.isGoogleConnected) { request in
+                let token = try await session.googleAccessToken()
+                guard let client = session.makeGoogleClient() else { throw GoogleCalendarError.notConfigured }
+                return try await client.createEvent(request, accessToken: token, timeZone: parisTimeZone)
+            } created: { request, meeting in
+                show(Toast(message: "✅ RDV créé, invitation envoyée à \(request.attendeeEmail)"))
+                pendingMeetingMail = ActionLinks.mailto(
+                    to: request.attendeeEmail,
+                    subject: MeetingInvite.mailSubject(start: request.start, timeZone: parisTimeZone),
+                    body: MeetingInvite.mailBody(contactName: item.person?.name, start: request.start,
+                                                 meetLink: meeting.meetLink, timeZone: parisTimeZone))
             }
         }
         .sheet(item: $claudeNote) { item in
@@ -383,6 +405,8 @@ struct ActivityListView: View {
             claudeNote = item
         case .reschedule:
             rescheduleRequest = RescheduleRequest(item: item)
+        case .createMeeting:
+            meetingItem = item
         case .openMeeting(let meeting):
             // Lien universel : l'app Google Agenda si elle le prend en charge, sinon Google Agenda dans Safari.
             open(meeting.calendarURL, failure: "Google Agenda n'a pas pu s'ouvrir.")

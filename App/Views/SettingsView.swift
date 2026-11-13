@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 import PipedriveKit
 
@@ -18,6 +19,10 @@ struct SettingsView: View {
     @State private var claudeFireURL = ""
     @State private var claudeToken = ""
     @State private var claudeMessage: String?
+    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
+    @State private var googleClientID = ""
+    @State private var googleMessage: String?
+    @State private var googleBusy = false
 
     var body: some View {
         Form {
@@ -126,6 +131,38 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    TextField("1234-abcd.apps.googleusercontent.com", text: $googleClientID)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .font(.footnote.monospaced())
+                    if session.isGoogleConnected {
+                        Label("Google Agenda connecté", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    }
+                    Button(session.isGoogleConnected ? "Reconnecter Google Agenda" : "Se connecter à Google Agenda") {
+                        Task { await connectGoogle() }
+                    }
+                    .disabled(GoogleOAuth.validClientID(googleClientID) == nil || googleBusy)
+                    if session.isGoogleConnected {
+                        Button("Déconnecter Google Agenda", role: .destructive) {
+                            Task {
+                                await session.disconnectGoogle()
+                                googleMessage = nil
+                            }
+                        }
+                    }
+                    if let googleMessage {
+                        Text(googleMessage)
+                            .font(.footnote)
+                            .foregroundStyle(googleMessage.hasPrefix("✓") ? Color.green : Color.red)
+                    }
+                } header: {
+                    Text("Google Agenda : bouton « Créer un RDV »")
+                } footer: {
+                    Text("Console Google Cloud › API et services › Identifiants › ID client OAuth de type iOS (ID du bundle com.yateo.ycrm) : collez l'ID client ici, puis connectez-vous avec votre compte Google. L'app peut seulement créer des rendez-vous dans votre agenda ; l'accès reste sur cet iPhone.")
+                }
+
+                Section {
                     TextField("https://api.anthropic.com/v1/claude_code/routines/…/fire", text: $claudeFireURL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -213,6 +250,33 @@ struct SettingsView: View {
         onoffShortcutName = session.onoffShortcutName
         detectedOnOff = InstalledApps.onoffSchemes
         claudeFireURL = session.claudeFireURL
+        googleClientID = session.googleClientID
+    }
+
+    /// Connexion Google (PKCE) dans la feuille de connexion d'iOS, puis échange du code contre les jetons.
+    private func connectGoogle() async {
+        googleBusy = true
+        googleMessage = nil
+        defer { googleBusy = false }
+        do {
+            try session.saveGoogleClientID(googleClientID)
+            let verifier = PKCE.verifier()
+            let state = UUID().uuidString
+            guard let url = GoogleOAuth.authorizationURL(clientID: session.googleClientID,
+                                                         codeChallenge: PKCE.challenge(for: verifier), state: state,
+                                                         loginHint: session.myEmail) else {
+                throw GoogleCalendarError.notConfigured
+            }
+            let callback = try await webAuthenticationSession.authenticate(
+                using: url, callbackURLScheme: GoogleOAuth.callbackScheme(clientID: session.googleClientID))
+            let code = try GoogleOAuth.authorizationCode(from: callback, state: state)
+            try await session.connectGoogle(code: code, verifier: verifier)
+            googleMessage = "✓ Google Agenda connecté : le bouton « Créer un RDV » est prêt."
+        } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+            googleMessage = "Connexion annulée."
+        } catch {
+            googleMessage = error.localizedDescription
+        }
     }
 
     private func connect() async {

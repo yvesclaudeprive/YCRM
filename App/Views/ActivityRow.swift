@@ -8,7 +8,7 @@ enum ActivityAction {
     // Contacter : ouvre une autre app
     case phone, onoff, aircall, whatsapp, sms
     // E-mails : brouillons ; « Décaler » : nouvelle date de l'alerte dans Pipedrive
-    case newMail, replyMail, mailToSelf, reschedule
+    case newMail, replyMail, mailToSelf, createMeeting, reschedule
     // Historique (fenêtres)
     case showHistory, showLeexi
     /// Étiquette « Devis envoyé » / « En signature » touchée, ou bouton « Analyse devis » : détail des devis.
@@ -58,6 +58,8 @@ struct ActivityRow: View {
                     chip("Répondre\ndernier mail", icon: "arrowshape.turn.up.left.fill", action: .replyMail, row: .mails,
                          disabledReason: personReason ?? busyReason)
                     chip("Auto\nmail", icon: "paperplane.fill", action: .mailToSelf, row: .mails, disabledReason: nil)
+                    chip("Créer\nun RDV", icon: "calendar.badge.plus", action: .createMeeting, row: .mails,
+                         disabledReason: emailReason)
                     chip("Décaler\nla date", icon: "calendar.badge.clock", action: .reschedule, row: .mails,
                          disabledReason: busyReason, pipedrive: true)
                 }
