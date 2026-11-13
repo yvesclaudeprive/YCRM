@@ -56,7 +56,10 @@ public enum ActionLinks {
     }
 
     /// Brouillon d'e-mail (ouvert dans l'app de messagerie par défaut, Superhuman si elle est choisie dans Réglages).
+    /// Un « % » dans le sujet (« devis (1100/12%) ») vidait le sujet dans Superhuman, qui décode le lien deux fois
+    /// (retour d'Yves du 13/11/2026) : il est remplacé par « ％ » (signe pour cent pleine chasse, identique à l'œil).
     public static func mailto(to address: String, subject: String? = nil, body: String? = nil) -> URL? {
+        let subject = subject?.replacingOccurrences(of: "%", with: "％")
         let cleaned = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard cleaned.contains("@"), !cleaned.contains(" ") else { return nil }
         var link = "mailto:" + percentEncode(cleaned, keeping: "@.+-_")

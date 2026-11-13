@@ -46,6 +46,12 @@ final class PhoneAndLinksTests: XCTestCase {
         XCTAssertEqual(url?.absoluteString,
                        "mailto:moi@example.com?subject=%5BSoci%C3%A9t%C3%A9%20%26%20Fils%5D%20Relance%20%3F&body=https%3A%2F%2Ftest.pipedrive.com%2Fdeal%2F9")
         XCTAssertEqual(ActionLinks.mailto(to: "client@example.com")?.absoluteString, "mailto:client@example.com")
+        // Un « % » ne doit jamais rester dans le sujet : Superhuman le décode deux fois et vide le sujet.
+        let percent = ActionLinks.mailto(to: "moi@example.com", subject: "[CLIENT] devis (1100/12%)")
+        let subjectValue = percent.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?
+            .queryItems?.first { $0.name == "subject" }?.value
+        XCTAssertEqual(subjectValue, "[CLIENT] devis (1100/12％)")
+        XCTAssertNotNil(subjectValue?.removingPercentEncoding, "un 2e décodage ne doit pas échouer")
         XCTAssertNil(ActionLinks.mailto(to: "pas une adresse"))
     }
 
