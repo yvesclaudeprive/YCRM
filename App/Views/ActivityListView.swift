@@ -693,11 +693,11 @@ struct ActivityListView: View {
                             }
                         }
                     } catch {
-                        showError("Note enregistrée, mais Claude n'a pas pu être prévenu : \(error.localizedDescription) Il la lira à 5h17 ou 13h17.")
+                        showError("Note enregistrée, mais Claude n'a pas pu être prévenu : \(error.localizedDescription) Il la lira à 3h17 ou 12h17.")
                     }
                 }
             }
-            let when = trigger == nil ? "à sa prochaine analyse (5h17 ou 13h17)" : "dans une minute environ"
+            let when = trigger == nil ? "à sa prochaine analyse (3h17 ou 12h17)" : "dans une minute environ"
             show(Toast(message: "✅ Note pour Claude enregistrée (\(item.clientName)) : Claude la traite \(when).") {
                 fire?.cancel()
                 do {

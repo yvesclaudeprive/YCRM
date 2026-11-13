@@ -2,7 +2,7 @@ import SwiftUI
 import PipedriveKit
 
 /// Détail des devis d'une affaire (demandes d'Yves du 08/11/2026). Avec l'analyse de Claude (champ « Devis en
-/// attente », mise à jour vers 5h et 13h) : devis par devis, en signature / envoyés / signés / abandonnés, avec la
+/// attente », mise à jour à 3h17 et 12h17) : devis par devis, en signature / envoyés / signés / abandonnés, avec la
 /// raison. Sans analyse : les devis envoyés trouvés par l'app (activités « Devis envoyé », e-mails avec un devis joint).
 struct QuoteSheet: View {
     let item: ActivityItem
@@ -201,7 +201,7 @@ struct QuoteSheet: View {
             entryCard(QuoteAnalysis.Entry(status: .meeting, title: meeting.title, day: meeting.day, detail: meeting.detail,
                                           time: meeting.time, link: meeting.link))
         }
-        Text("Affaire pas encore analysée par Claude (analyse à 5h17 et 13h17). En attendant : activités « Devis envoyé » et e-mails de l'agence au client avec un devis joint (6 derniers mois). « Signé » : affaire gagnée, champ « Contrat signé le », lancement du projet, ou note / activité / e-mail qui dit « signé » (« À la suite de la signature du bon de commande », « Bon pour accord ») après le dernier devis.")
+        Text("Affaire pas encore analysée par Claude (analyse à 3h17 et 12h17). En attendant : activités « Devis envoyé » et e-mails de l'agence au client avec un devis joint (6 derniers mois). « Signé » : affaire gagnée, champ « Contrat signé le », lancement du projet, ou note / activité / e-mail qui dit « signé » (« À la suite de la signature du bon de commande », « Bon pour accord ») après le dernier devis.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .padding(.top, 4)

@@ -197,7 +197,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Note pour Claude : en temps réel")
                 } footer: {
-                    Text("Sur claude.ai/code/routines, tâche « YCRM · Note pour Claude (temps réel) » › Modifier › Déclencheur + › API : copiez l'adresse (Fire URL) et générez le jeton, puis collez-les ici. Le jeton reste dans le trousseau de cet iPhone. Sans réglage, Claude lit les notes à 5h17 et 13h17.")
+                    Text("Sur claude.ai/code/routines, tâche « YCRM · Note pour Claude (temps réel) » › Modifier › Déclencheur + › API : copiez l'adresse (Fire URL) et générez le jeton, puis collez-les ici. Le jeton reste dans le trousseau de cet iPhone. Sans réglage, Claude lit les notes à 3h17 et 12h17.")
                 }
 
                 Section {

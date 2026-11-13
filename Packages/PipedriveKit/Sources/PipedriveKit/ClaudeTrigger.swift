@@ -24,7 +24,7 @@ public struct ClaudeTrigger: Sendable {
             case .unauthorized:
                 return "Jeton Claude refusé : générez-en un nouveau dans la tâche Claude et collez-le dans Réglages."
             case .rateLimited:
-                return "Trop de notes pour Claude en une heure : elle sera lue à la prochaine analyse (5h17 ou 13h17)."
+                return "Trop de notes pour Claude en une heure : elle sera lue à la prochaine analyse (3h17 ou 12h17)."
             case .rejected(let status, let message):
                 return message.map { "Claude : \($0)" } ?? "Claude n'a pas pu être prévenu (code \(status))."
             }

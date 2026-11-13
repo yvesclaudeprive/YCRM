@@ -122,7 +122,7 @@ final class ActivityFeedModel {
                 tags[id] = nil
                 tagsComputedAt[id] = nil
             }
-            // … sauf si l'analyse de Claude de l'affaire a changé depuis (note traitée, passage de 5h17 / 13h17).
+            // … sauf si l'analyse de Claude de l'affaire a changé depuis (note traitée, passage de 3h17 / 12h17).
             for item in items {
                 if let old = previousAnalysis[item.id], old != (item.deal?.quoteAnalysis ?? "") {
                     tags[item.id] = nil
