@@ -107,8 +107,9 @@ public extension ActivityItem {
         (person?.emails ?? []).map { (label: $0.displayLabel, address: $0.value) }
     }
 
-    /// Sujet « [NOMDUCLIENT] Texte de l'activité » pour le mail à soi-même.
+    /// Sujet « [NOMDUCLIENT] Texte de l'activité - zzzcall » pour le mail à soi-même (« - zzzcall » ajouté à la fin :
+    /// demande d'Yves du 17/11/2026).
     var selfMailSubject: String {
-        "[\(clientNameUppercased)] \(activity.subject)"
+        "[\(clientNameUppercased)] \(activity.subject) - zzzcall"
     }
 }

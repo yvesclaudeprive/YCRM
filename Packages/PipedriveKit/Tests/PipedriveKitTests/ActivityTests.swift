@@ -105,7 +105,7 @@ final class ActivityTests: XCTestCase {
         XCTAssertTrue(item.matches(search: "elodie devis"))
         XCTAssertTrue(item.matches(search: "  "))
         XCTAssertFalse(item.matches(search: "facture"))
-        XCTAssertEqual(item.selfMailSubject, "[SOCIÉTÉ TEST] Relancer le devis")
+        XCTAssertEqual(item.selfMailSubject, "[SOCIÉTÉ TEST] Relancer le devis - zzzcall")
     }
 
     func testPersonContactPointsPrimaryFirstAndDeduplicated() throws {
