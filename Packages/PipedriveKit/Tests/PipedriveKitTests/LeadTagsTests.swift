@@ -297,11 +297,12 @@ final class LeadTagsTests: XCTestCase {
         XCTAssertNil(tags.quoteSentLabel(now: now, timeZone: paris), "affaire gagnée : plus d'étiquette")
         XCTAssertTrue(tags.isEmpty)
 
+        let before = await transport.recorded.count
         let lost = DealSummary(id: 100, title: "Site", orgID: nil, personID: 200, score: nil, status: "lost")
         let none = try await LeadTagsLoader(client: client(transport)).load(for: item(deal: lost), typeNames: names, timeZone: paris)
         XCTAssertEqual(none, .none)
         let count = await transport.recorded.count
-        XCTAssertEqual(count, 0, "affaire close : aucune requête")
+        XCTAssertEqual(count, before, "affaire perdue : aucune requête")
     }
 
     // MARK: Retours d'Yves du 08/11/2026 (données fictives)

@@ -97,6 +97,19 @@ final class ActivityTests: XCTestCase {
         XCTAssertNil(ActivityType.named("Inconnu", in: types))
     }
 
+    /// Bouton « Msg vocal » (demande d'Yves du 18/11/2026) : type natif retrouvé par son nom, sa clé ou « vocal ».
+    func testVoiceMessageType() {
+        let native = [ActivityType(id: 1, name: "Msg vocal", key: "msg_vocal", isActive: true)]
+        XCTAssertEqual(ActivityType.named(ActivityType.voiceMessageName, in: native)?.key, "msg_vocal")
+        let renamed = [ActivityType(id: 2, name: "Tâche", key: "task", isActive: true),
+                       ActivityType(id: 3, name: "Message vocal laissé", key: "msg_vocal_2", isActive: true)]
+        XCTAssertEqual(ActivityType.named("Msg vocal", in: renamed)?.id, 3)
+        let byKey = [ActivityType(id: 4, name: "Vocal", key: "msg_vocal", isActive: false)]
+        XCTAssertEqual(ActivityType.named("Msg vocal", in: byKey)?.id, 4, "clé « msg_vocal »")
+        XCTAssertNil(ActivityType.named("Msg vocal", in: [ActivityType(id: 5, name: "Tâche", key: "task", isActive: true)]))
+        XCTAssertNil(ActivityType.named("Tâche vocal", in: renamed), "le repli « vocal » ne vaut que pour « Msg vocal »")
+    }
+
     func testSearchAndSelfMail() {
         let activity = Activity(id: 1, subject: "Relancer le devis", type: "task", dueDate: "2026-11-01", dueTime: nil,
                                 dealID: nil, personID: 1, orgID: 1, done: false)

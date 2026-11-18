@@ -242,10 +242,20 @@ public struct ActivityType: Hashable, Sendable, Identifiable {
         self.init(id: id, name: json["name"].stringValue ?? key, key: key, isActive: json["active_flag"].boolValue ?? true)
     }
 
-    /// Type actif portant ce nom (accents et casse ignorés).
+    /// Type actif portant ce nom (accents et casse ignorés), sinon dont la clé s'écrit pareil (« msg_vocal »).
+    /// « Msg vocal » : sinon tout type actif dont le nom parle de message vocal (« Message vocal laissé »).
     public static func named(_ name: String, in types: [ActivityType]) -> ActivityType? {
-        types.first { $0.isActive && Label.matches($0.name, name) } ?? types.first { Label.matches($0.name, name) }
+        if let exact = types.first(where: { $0.isActive && Label.matches($0.name, name) })
+            ?? types.first(where: { Label.matches($0.name, name) })
+            ?? types.first(where: { Label.matches($0.key.replacingOccurrences(of: "_", with: " "), name) }) {
+            return exact
+        }
+        guard Label.matches(name, voiceMessageName) else { return nil }
+        return types.first { $0.isActive && Label.normalized($0.name).contains("vocal") }
     }
+
+    /// Bouton « Msg vocal » des alertes : type natif du Pipedrive d'Yves (clé « msg_vocal »).
+    public static let voiceMessageName = "Msg vocal"
 }
 
 /// Une ligne de la liste : l'activité et tout ce qui est affiché ou utilisé par les boutons.

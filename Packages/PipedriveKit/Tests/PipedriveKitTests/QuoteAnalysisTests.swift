@@ -164,7 +164,10 @@ final class QuoteAnalysisTests: XCTestCase {
                        "devis de plus de 6 mois gardé : c'est Claude qui décide")
         XCTAssertFalse(tags.firstCallToDo)
         let paths = await transport.recorded.compactMap { $0.url?.path }
-        XCTAssertEqual(paths, ["/api/v2/activities"], "pas de lecture des e-mails ni des notes")
+        XCTAssertEqual(paths, ["/api/v2/activities", "/api/v2/activities"],
+                       "activités de l'affaire puis du contact (« Dernière action ») : ni e-mails ni notes")
+        XCTAssertTrue(tags.lastActionChecked)
+        XCTAssertEqual(tags.lastAction?.label, "Call effectué")
     }
 
     func testWonDealWithPendingQuoteInAnalysis() async throws {
@@ -175,8 +178,9 @@ final class QuoteAnalysisTests: XCTestCase {
             .load(for: item(deal), typeNames: [:], timeZone: paris, now: Self.now)
         XCTAssertEqual(tags.signingLabel(now: Self.now, timeZone: paris), "En signature - Refonte - 3j")
         XCTAssertFalse(tags.firstCallToDo)
-        let count = await transport.recorded.count
-        XCTAssertEqual(count, 0)
+        let paths = await transport.recorded.compactMap { $0.url?.path }
+        XCTAssertEqual(paths, ["/api/v2/activities", "/api/v2/activities"],
+                       "affaire gagnée : seulement les activités pour la « Dernière action »")
     }
 
     func testDealAnalysisField() throws {

@@ -439,9 +439,9 @@ struct ActivityListView: View {
         case .debriefCall:
             // Compte rendu écrit dans l'app (demande d'Yves du 10/11/2026), puis « Décaler l'alerte ».
             debriefItem = item
-        case .whatsappSent:
-            // Pas de type WhatsApp dans Pipedrive : type « Sms envoyé », texte « WhatsApp envoyé ».
-            Task { await logDoneActivity(type: "Sms envoyé", subject: "WhatsApp envoyé", for: item) }
+        case .voiceMessage:
+            // Message vocal laissé (type natif « Msg vocal », demande d'Yves du 18/11/2026).
+            Task { await logDoneActivity(type: ActivityType.voiceMessageName, for: item) }
         case .messageColleagues:
             Task { await logDoneActivity(type: "Msg laissé aux collègues", for: item) }
         case .smsSent:

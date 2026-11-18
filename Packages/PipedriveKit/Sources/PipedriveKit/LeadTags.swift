@@ -24,6 +24,10 @@ public struct LeadTags: Hashable, Sendable {
     /// Rendez-vous à venir avec le contact (Google Agenda via l'analyse de Claude, ou activité Pipedrive de type
     /// rendez-vous), le plus proche d'abord ; les rendez-vous passés n'y sont jamais.
     public let meetings: [UpcomingMeeting]
+    /// « Dernière action » (demande d'Yves du 18/11/2026) : dernier appel, répondeur, message… (jamais un e-mail).
+    public private(set) var lastAction: LastAction?
+    /// Vrai une fois la dernière action cherchée (même si aucune n'a été trouvée).
+    public private(set) var lastActionChecked = false
 
     public init(quotes: [QuoteSent], firstCallToDo: Bool, signature: SignatureEvidence? = nil, signing: [QuoteSent] = [],
                 analysis: QuoteAnalysis? = nil, access: [QuoteSent] = [], toDo: [QuoteSent] = [],
@@ -54,9 +58,20 @@ public struct LeadTags: Hashable, Sendable {
     public func adding(access moreAccess: [QuoteSent] = [], meetings more: [UpcomingMeeting], now: Date = Date(),
                        timeZone: TimeZone) -> LeadTags {
         guard !more.isEmpty || !moreAccess.isEmpty else { return self }
-        return LeadTags(quotes: quotes, firstCallToDo: firstCallToDo, signature: signature, signing: signing,
-                        analysis: analysis, access: access + moreAccess, toDo: toDo,
-                        meetings: UpcomingMeeting.upcoming(meetings + more, now: now, timeZone: timeZone))
+        var result = LeadTags(quotes: quotes, firstCallToDo: firstCallToDo, signature: signature, signing: signing,
+                              analysis: analysis, access: access + moreAccess, toDo: toDo,
+                              meetings: UpcomingMeeting.upcoming(meetings + more, now: now, timeZone: timeZone))
+        result.lastAction = lastAction
+        result.lastActionChecked = lastActionChecked
+        return result
+    }
+
+    /// Les mêmes étiquettes avec la « Dernière action » cherchée.
+    public func with(lastAction action: LastAction?) -> LeadTags {
+        var result = self
+        result.lastAction = action
+        result.lastActionChecked = true
+        return result
     }
 
     /// Signé : une preuve de signature datée du dernier devis envoyé ou après (un devis plus récent repasse en « envoyé »).
@@ -447,24 +462,37 @@ public struct LeadTagsLoader: Sendable {
 
     /// `myEmail` : mon adresse, dont le domaine désigne l'agence (e-mails de devis et de signature) ; sans elle,
     /// les e-mails de l'affaire ne sont pas lus.
+    /// `ownerName` : nom de l'utilisateur à qui l'alerte est attribuée (« Dernière action » : ses appels Aircall seulement).
     public func load(for item: ActivityItem, typeNames: [String: String], timeZone: TimeZone,
-                     now: Date = Date(), myEmail: String? = nil) async throws -> LeadTags {
+                     now: Date = Date(), myEmail: String? = nil, ownerName: String? = nil) async throws -> LeadTags {
         let dealID = item.activity.dealID
         let personID = item.person?.id ?? item.activity.personID
         guard dealID != nil || personID != nil else { return .none }
         // Affaire perdue : pas d'étiquette. Affaire gagnée : signée (date de gain), donc pas d'étiquette non plus.
         if let deal = item.deal, deal.status == "lost" { return .none }
+        let done = DoneActivities(client: client, dealID: dealID, personID: personID)
+        let tags = try await computeTags(for: item, dealID: dealID, personID: personID, done: done, typeNames: typeNames,
+                                         timeZone: timeZone, now: now, myEmail: myEmail)
+        // Dernière action : activités terminées de l'affaire et du contact (déjà lues pour les étiquettes, sinon lues ici ;
+        // une erreur n'empêche pas les étiquettes).
+        let activities = ((try? await done.deal()) ?? []) + ((try? await done.person()) ?? [])
+        return tags.with(lastAction: LastAction.latest(in: activities, typeNames: typeNames, ownerID: item.activity.ownerID,
+                                                       ownerName: ownerName, now: now))
+    }
+
+    func computeTags(for item: ActivityItem, dealID: Int?, personID: Int?, done: DoneActivities,
+                     typeNames: [String: String], timeZone: TimeZone, now: Date, myEmail: String?) async throws -> LeadTags {
         // Analyse de Claude (champ « Devis en attente ») : elle fait foi pour les devis, devis par devis.
         let analysis = QuoteAnalysis(text: item.deal?.quoteAnalysis)
         if let analysis, analysis.coversQuotes {
             var firstCall = false
             if item.deal?.status != "won", analysis.entries(.signed).isEmpty {
-                let check = try await conversation(dealID: dealID, personID: personID, typeNames: typeNames)
+                let check = try await conversation(dealID: dealID, personID: personID, done: done, typeNames: typeNames)
                 firstCall = !check.spoke
             }
             return LeadTags(analysis: analysis, firstCallToDo: firstCall, now: now, timeZone: timeZone)
         }
-        let local = try await localTags(for: item, dealID: dealID, personID: personID, typeNames: typeNames,
+        let local = try await localTags(for: item, dealID: dealID, personID: personID, done: done, typeNames: typeNames,
                                         timeZone: timeZone, now: now, myEmail: myEmail)
         guard let analysis else { return local }
         // Analyse sans partie devis (seulement des accès en attente ou des rendez-vous) : les devis restent cherchés par
@@ -475,7 +503,7 @@ public struct LeadTagsLoader: Sendable {
     }
 
     /// Règles de l'app quand Claude n'a pas encore analysé les devis de l'affaire.
-    func localTags(for item: ActivityItem, dealID: Int?, personID: Int?, typeNames: [String: String],
+    func localTags(for item: ActivityItem, dealID: Int?, personID: Int?, done: DoneActivities, typeNames: [String: String],
                    timeZone: TimeZone, now: Date, myEmail: String?) async throws -> LeadTags {
         if let deal = item.deal, deal.status == "won" {
             let day = deal.wonTime.flatMap(FrenchFormat.parseInstant).map { FrenchFormat.apiDay(from: $0, timeZone: timeZone) }
@@ -485,7 +513,7 @@ public struct LeadTagsLoader: Sendable {
                 text: "Affaire marquée « Gagnée »"))
         }
 
-        let check = try await conversation(dealID: dealID, personID: personID, typeNames: typeNames)
+        let check = try await conversation(dealID: dealID, personID: personID, done: done, typeNames: typeNames)
         let (spoke, dealDone, personDone, dealNotes) = (check.spoke, check.dealDone, check.personDone, check.dealNotes)
 
         // E-mails de l'affaire (sans bloquer les étiquettes si la lecture échoue).
@@ -576,17 +604,14 @@ public struct LeadTagsLoader: Sendable {
     }
 
     /// Échange de vive voix déjà eu : activités terminées de l'affaire, puis de la personne, puis notes Leexi.
-    func conversation(dealID: Int?, personID: Int?, typeNames: [String: String]) async throws
+    func conversation(dealID: Int?, personID: Int?, done: DoneActivities, typeNames: [String: String]) async throws
         -> (spoke: Bool, dealDone: [Activity], personDone: [Activity], dealNotes: [PipedriveNote]?) {
-        var dealDone: [Activity] = []
-        if let dealID {
-            dealDone = try await client.activities(filter: "deal_id", id: dealID, limit: 200, done: true)
-        }
+        let dealDone = try await done.deal()
         var spoke = dealDone.contains { LeadTagRules.isConversation($0, typeNames: typeNames) }
         var personDone: [Activity] = []
-        if !spoke, let personID {
+        if !spoke, personID != nil {
             // Les journaux Aircall sont toujours liés à la personne, pas toujours à l'affaire.
-            personDone = try await client.activities(filter: "person_id", id: personID, limit: 200, done: true)
+            personDone = try await done.person()
             spoke = personDone.contains { LeadTagRules.isConversation($0, typeNames: typeNames) }
         }
         var dealNotes: [PipedriveNote]?
@@ -707,5 +732,37 @@ public struct UpcomingMeeting: Hashable, Sendable {
         case 1: return "demain"
         default: return "dans \(days)j"
         }
+    }
+}
+
+/// Activités terminées de l'affaire et du contact d'une carte, lues une seule fois (étiquettes puis « Dernière action »).
+/// Utilisée par une seule tâche à la fois.
+final class DoneActivities: @unchecked Sendable {
+    private let client: PipedriveClient
+    private let dealID: Int?
+    private let personID: Int?
+    private var dealList: [Activity]?
+    private var personList: [Activity]?
+
+    init(client: PipedriveClient, dealID: Int?, personID: Int?) {
+        self.client = client
+        self.dealID = dealID
+        self.personID = personID
+    }
+
+    func deal() async throws -> [Activity] {
+        if let dealList { return dealList }
+        guard let dealID else { return [] }
+        let list = try await client.activities(filter: "deal_id", id: dealID, limit: 200, done: true)
+        dealList = list
+        return list
+    }
+
+    func person() async throws -> [Activity] {
+        if let personList { return personList }
+        guard let personID else { return [] }
+        let list = try await client.activities(filter: "person_id", id: personID, limit: 200, done: true)
+        personList = list
+        return list
     }
 }

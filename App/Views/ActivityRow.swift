@@ -4,7 +4,7 @@ import PipedriveKit
 enum ActivityAction {
     case open
     // Alertes : activité terminée créée dans Pipedrive
-    case debriefCall, voicemailEmpty, voicemailOnOff, whatsappSent, messageColleagues, smsSent
+    case debriefCall, voicemailEmpty, voicemailOnOff, voiceMessage, messageColleagues, smsSent
     // Contacter : ouvre une autre app
     case phone, onoff, aircall, whatsapp, sms
     // E-mails : brouillons ; « Décaler » : nouvelle date de l'alerte dans Pipedrive
@@ -34,7 +34,13 @@ struct ActivityRow: View {
     var tags: LeadTags? = nil
     let perform: (ActivityAction) -> Void
 
+    /// Texte de l'activité déplié en entier (bouton « Voir tout », demande d'Yves du 18/11/2026).
+    @State private var textExpanded = false
+    /// Le texte ne tient pas sur 3 lignes : le bouton « Voir tout » apparaît.
+    @State private var textTruncated = false
+
     private static let chipHeight: CGFloat = 54
+    private static let collapsedLines = 3
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -71,7 +77,9 @@ struct ActivityRow: View {
                          disabledReason: busyReason, pipedrive: true)
                     chip("Rép.\nON/OFF", icon: "asset:OnOff", action: .voicemailOnOff, row: .alerts,
                          disabledReason: busyReason, pipedrive: true)
-                    chip("WhatsApp", icon: "asset:WhatsApp", action: .whatsappSent, row: .alerts,
+                    // « Msg vocal » à la place de « WhatsApp » (demande d'Yves du 18/11/2026 : pas de type WhatsApp dans
+                    // Pipedrive, « Sms envoyé » suffit ; « Msg vocal » est un type natif).
+                    chip("Msg\nvocal", icon: "asset:MsgVocal", action: .voiceMessage, row: .alerts,
                          disabledReason: busyReason, pipedrive: true)
                     chip("Msg\ncollègues", icon: "person.2.fill", action: .messageColleagues, row: .alerts,
                          disabledReason: busyReason, pipedrive: true)
@@ -82,6 +90,9 @@ struct ActivityRow: View {
                     historyButton("Dernières notes et activités", icon: "clock.arrow.circlepath", action: .showHistory,
                                   pipedrive: true)
                     historyButton("Voir les Leexi", icon: "asset:Leexi", action: .showLeexi, pipedrive: false)
+                }
+                if let tags, tags.lastActionChecked {
+                    lastActionLine(tags.lastAction)
                 }
             }
         }
@@ -137,12 +148,89 @@ struct ActivityRow: View {
                 tagsRow(tags)
                     .padding(.top, 2)
             }
-            Text(highlighted(item.activity.subject.isEmpty ? "(sans texte)" : item.activity.subject))
-                .font(.callout)
-                .foregroundStyle(.primary)
-                .lineLimit(3)
+            activityText
                 .padding(.top, 2)
         }
+    }
+
+    /// Texte de l'activité sur 3 lignes, avec « Voir tout » pour le lire en entier quand il est coupé (demande d'Yves du
+    /// 18/11/2026). Le bouton ne fait que déplier : toucher le reste du bloc ouvre toujours l'affaire.
+    private var activityText: some View {
+        let text = highlighted(item.activity.subject.isEmpty ? "(sans texte)" : item.activity.subject)
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(.primary)
+                .lineLimit(textExpanded ? nil : Self.collapsedLines)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(alignment: .topLeading) {
+                    // Copie invisible du texte entier, à la même largeur : plus haute = le texte affiché est coupé.
+                    GeometryReader { shown in
+                        Text(text)
+                            .font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(width: shown.size.width, alignment: .leading)
+                            .background(GeometryReader { full in
+                                Color.clear.preference(key: TextTruncationKey.self,
+                                                       value: full.size.height > shown.size.height + 1)
+                            })
+                            .hidden()
+                    }
+                }
+                .onPreferenceChange(TextTruncationKey.self) { textTruncated = $0 }
+            if textTruncated || textExpanded {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { textExpanded.toggle() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(textExpanded ? "Réduire" : "Voir tout")
+                        Image(systemName: textExpanded ? "chevron.up" : "chevron.down")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(ButtonRowStyle.alerts.color)
+                    .padding(.vertical, 4)
+                    .padding(.trailing, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(textExpanded ? "Réduire le texte" : "Voir tout le texte")
+            }
+        }
+    }
+
+    /// « Dernière action : Répondeur · 12 novembre à 16:49 · il y a 6 j » (demande d'Yves du 18/11/2026) : dernier
+    /// appel, répondeur, message vocal, SMS… (jamais un e-mail). Toucher la ligne ouvre l'historique.
+    private func lastActionLine(_ action: LastAction?) -> some View {
+        let color = ButtonRowStyle.alerts.color
+        var text = AttributedString("Dernière action : ")
+        if let action {
+            var label = AttributedString(action.label)
+            label.inlinePresentationIntent = .stronglyEmphasized
+            label.foregroundColor = Color.primary
+            text += label
+            text += AttributedString(" · \(action.dateText(timeZone: parisTimeZone)) · \(action.agoText(timeZone: parisTimeZone))")
+        } else {
+            text += AttributedString("aucun appel ni message noté")
+        }
+        return Button {
+            perform(.showHistory)
+        } label: {
+            HStack(spacing: 6) {
+                GlyphIcon(name: action?.kind.icon ?? "clock", size: 12)
+                    .foregroundStyle(color)
+                    .frame(width: 16)
+                Text(text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Spacer(minLength: 0)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Ouvre les dernières notes et activités")
     }
 
     /// Étiquettes pleines (texte blanc), une ligne par devis, objet en gras (demandes d'Yves du 08/11/2026) :
@@ -748,4 +836,24 @@ enum ButtonRowStyle {
 
     /// Pastille pleine pour les actions, teintée pour l'historique.
     var isFilled: Bool { self == .contact || self == .mails }
+}
+
+/// Le texte de l'activité est-il coupé à 3 lignes ?
+private struct TextTruncationKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
+extension LastAction.Kind {
+    /// Icône de la ligne « Dernière action ».
+    var icon: String {
+        switch self {
+        case .call: return "phone.fill"
+        case .voicemail: return "asset:Repondeur"
+        case .message: return "text.bubble.fill"
+        case .meeting: return "calendar"
+        }
+    }
 }
