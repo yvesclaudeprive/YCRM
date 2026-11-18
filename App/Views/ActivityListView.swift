@@ -777,7 +777,9 @@ struct ActivityListView: View {
             guard let threadID = hint.gmailMessageID,
                   let url = ActionLinks.superhumanThread(account: session.myEmail, threadID: threadID,
                                                          template: session.superhumanTemplate) else {
+                // Fil Gmail introuvable à coup sûr (fil commencé par moi) : réponse prête « Re: sujet » au contact.
                 open(fallback, failure: "Impossible d'ouvrir le dernier e-mail.")
+                if fallback != nil { show(Toast(message: "Réponse « Re: \(hint.subject) » prête dans Superhuman.")) }
                 return
             }
             openURL(url) { accepted in

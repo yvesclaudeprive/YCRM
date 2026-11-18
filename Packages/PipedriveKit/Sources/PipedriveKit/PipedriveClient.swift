@@ -274,7 +274,13 @@ public struct PipedriveClient: Sendable {
     // MARK: E-mails synchronisés
 
     /// Dernier e-mail **du client** ou **envoyé par moi au client** (jamais celui d'un collègue), le plus récent des deux,
-    /// avec l'identifiant Gmail du fil pour Superhuman.
+    /// avec l'identifiant Gmail du fil pour Superhuman quand il est sûr.
+    ///
+    /// Gmail donne à un fil l'identifiant de son premier message. C'est sûr quand le fil commence par un message reçu du
+    /// client. Un fil commencé par moi a l'identifiant du **brouillon** (Superhuman écrit d'abord un brouillon, puis
+    /// l'envoie ou le programme), que Pipedrive ne connaît pas : Superhuman s'ouvrait alors sans le mail (retour d'Yves du
+    /// 18/11/2026). Dans ce cas, et si le fil n'a pas pu être lu, pas d'identifiant : l'app ouvre une réponse prête
+    /// (« Re: sujet » au client).
     public func lastMail(personID: Int, clientEmails: [String], myEmail: String?) async throws -> MailHint? {
         let response = try await send("GET", "/api/v1/persons/\(personID)/mailMessages", query: [
             URLQueryItem(name: "start", value: "0"), URLQueryItem(name: "limit", value: "50"),
@@ -282,13 +288,27 @@ public struct PipedriveClient: Sendable {
         let messages = response["data"].arrayValue ?? []
         guard let chosen = messages.first(where: { Self.isBetweenMeAndClient($0, clientEmails: clientEmails, myEmail: myEmail) }),
               let latest = MailHint(message: chosen) else { return nil }
-        guard let threadID = latest.pipedriveThreadID else { return latest }
-        // Le fil Gmail porte l'identifiant de son premier message.
-        let thread = try? await send("GET", "/api/v1/mailbox/mailThreads/\(threadID)/mailMessages")
-        let threadMessages = thread?["data"].arrayValue ?? []
-        let oldest = threadMessages.min { ($0["message_time"].stringValue ?? "") < ($1["message_time"].stringValue ?? "") }
-        let threadGmailID = oldest.flatMap { MailHint.gmailID(fromStoragePath: $0["s3_bucket_path"].stringValue ?? $0["body_url"].stringValue) }
-        return MailHint(subject: latest.subject, pipedriveThreadID: threadID, gmailMessageID: threadGmailID ?? latest.gmailMessageID)
+        guard let threadID = latest.pipedriveThreadID else {
+            // Message seul : son identifiant est celui du fil s'il vient du client.
+            return Self.isFrom(chosen, address: myEmail) ? latest.withoutGmailID : latest
+        }
+        guard let thread = try? await send("GET", "/api/v1/mailbox/mailThreads/\(threadID)/mailMessages") else {
+            return latest.withoutGmailID
+        }
+        let threadMessages = thread["data"].arrayValue ?? []
+        guard let oldest = threadMessages.min(by: { ($0["message_time"].stringValue ?? "") < ($1["message_time"].stringValue ?? "") }),
+              !Self.isFrom(oldest, address: myEmail) else {
+            return latest.withoutGmailID
+        }
+        let threadGmailID = MailHint.gmailID(fromStoragePath: oldest["s3_bucket_path"].stringValue ?? oldest["body_url"].stringValue)
+        return MailHint(subject: latest.subject, pipedriveThreadID: threadID, gmailMessageID: threadGmailID)
+    }
+
+    /// Message envoyé depuis cette adresse (champ « from »).
+    static func isFrom(_ json: JSONValue, address: String?) -> Bool {
+        guard let address = address?.lowercased(), !address.isEmpty else { return false }
+        let data = json["data"].isNull ? json : json["data"]
+        return (data["from"].arrayValue ?? []).contains { $0["email_address"].stringValue?.lowercased() == address }
     }
 
     /// E-mails synchronisés d'une affaire, les plus récents d'abord (devis envoyés par mail, signatures).

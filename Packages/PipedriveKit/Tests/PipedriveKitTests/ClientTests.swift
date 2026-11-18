@@ -181,6 +181,37 @@ final class ClientTests: XCTestCase {
         XCTAssertEqual(hint?.gmailMessageID, "1e00000000000def")
     }
 
+    /// Fil commencé par moi (brouillon Superhuman, envoi programmé) : Gmail lui a donné l'identifiant du brouillon, que
+    /// Pipedrive ne connaît pas (retour d'Yves du 18/11/2026) → pas d'identifiant, l'app ouvre une réponse prête.
+    func testThreadStartedByMeHasNoGmailID() async throws {
+        let mine = """
+        {"success":true,"data":[
+          {"object":"mailMessage","data":{"id":910,"subject":"Re: Fwd: Suite à notre rdv","mail_thread_id":60,"from":[{"email_address":"moi@example.com"}],"to":[{"email_address":"client@example.com"}],"cc":[],"s3_bucket_path":"1-2/abc/1a1efaa6191bead0/body"}}
+        ]}
+        """
+        let thread = """
+        {"success":true,"data":[
+          {"id":908,"message_time":"2025-12-17T04:55:00.000Z","from":[{"email_address":"Moi@Example.com"}],"s3_bucket_path":"1-2/abc/19b2aa9582361da2/body"},
+          {"id":910,"message_time":"2026-11-18T17:18:04.000Z","from":[{"email_address":"moi@example.com"}],"s3_bucket_path":"1-2/abc/1a1efaa6191bead0/body"}
+        ]}
+        """
+        let transport = MockTransport([
+            "GET /api/v1/persons/200/mailMessages": .init(status: 200, body: mine),
+            "GET /api/v1/mailbox/mailThreads/60/mailMessages": .init(status: 200, body: thread),
+        ])
+        let hint = try await PipedriveClient(configuration: config, transport: transport)
+            .lastMail(personID: 200, clientEmails: ["client@example.com"], myEmail: "moi@example.com")
+        XCTAssertEqual(hint?.subject, "Re: Fwd: Suite à notre rdv")
+        XCTAssertNil(hint?.gmailMessageID, "ni le premier message envoyé, ni le dernier : l'identifiant du fil est inconnu")
+
+        // Fil illisible : pas d'identifiant non plus.
+        let broken = MockTransport(["GET /api/v1/persons/200/mailMessages": .init(status: 200, body: mine)])
+        let unknown = try await PipedriveClient(configuration: config, transport: broken)
+            .lastMail(personID: 200, clientEmails: ["client@example.com"], myEmail: "moi@example.com")
+        XCTAssertNotNil(unknown)
+        XCTAssertNil(unknown?.gmailMessageID)
+    }
+
     func testLastMailSentByMeToClient() throws {
         func message(from: String, to: String, cc: String = "") throws -> JSONValue {
             let ccPart = cc.isEmpty ? "" : #"{"email_address":"\#(cc)"}"#

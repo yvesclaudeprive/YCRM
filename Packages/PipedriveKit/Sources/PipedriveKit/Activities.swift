@@ -455,6 +455,11 @@ public struct MailHint: Hashable, Sendable {
         self.gmailMessageID = gmailMessageID
     }
 
+    /// Le même e-mail, sans identifiant de fil (inconnu ou pas sûr).
+    var withoutGmailID: MailHint {
+        MailHint(subject: subject, pipedriveThreadID: pipedriveThreadID, gmailMessageID: nil)
+    }
+
     /// Pipedrive stocke le corps sous « …/<id Gmail>/body » : on en extrait l'identifiant (16 caractères hexadécimaux).
     public static func gmailID(fromStoragePath path: String?) -> String? {
         guard let path else { return nil }
