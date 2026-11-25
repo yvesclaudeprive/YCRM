@@ -3,76 +3,181 @@ import SwiftUI
 import WidgetKit
 import PipedriveKit
 
-/// Widget de l'écran de gauche (demande d'Yves du 25/11/2026) : une barre de recherche qui ouvre la recherche de
-/// l'app et les premières alertes de la liste (même ordre que l'app : en retard et du jour d'abord, par score),
-/// avec leur score ; toucher une alerte ouvre sa fiche Pipedrive. Le widget lit Pipedrive lui-même (jeton du
-/// trousseau de l'app) toutes les 30 min environ, et l'app le relance quand elle passe en arrière-plan.
+/// Widgets de l'écran de gauche (demandes d'Yves du 25/11/2026) :
+/// - « YCRM » : une barre de recherche qui ouvre la recherche de l'app, puis les premières alertes de la liste
+///   (même ordre que l'app : en retard et du jour d'abord, par score) ;
+/// - « YCRM · suite » : les alertes suivantes, à poser sous le premier pour remplir l'écran (iOS limite un widget
+///   à la moitié de la hauteur de l'écran).
+/// Chaque alerte est une carte séparée, haute (grande zone à toucher), qui ouvre YCRM sur la carte de l'alerte.
+/// Le widget lit Pipedrive lui-même (jeton du trousseau de l'app) toutes les 30 min environ ; l'app le relance
+/// quand elle passe en arrière-plan.
 @main
 struct YCRMWidgetBundle: WidgetBundle {
     var body: some Widget {
         AlertsWidget()
+        MoreAlertsWidget()
     }
 }
 
 struct AlertsWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "YCRMAlerts", provider: AlertsProvider()) { entry in
+        StaticConfiguration(kind: "YCRMAlerts", provider: AlertsProvider(part: .first)) { entry in
             AlertsWidgetView(entry: entry)
                 .containerBackground(for: .widget) { Color("WidgetBackground") }
         }
         .configurationDisplayName("YCRM")
         .description("Recherche et premières alertes, triées par score.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .contentMarginsDisabled()
+    }
+}
+
+struct MoreAlertsWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "YCRMAlertsMore", provider: AlertsProvider(part: .more)) { entry in
+            AlertsWidgetView(entry: entry)
+                .containerBackground(for: .widget) { Color("WidgetBackground") }
+        }
+        .configurationDisplayName("YCRM · suite")
+        .description("Les alertes suivantes : à placer sous le widget YCRM pour remplir l'écran.")
+        .supportedFamilies([.systemMedium, .systemLarge])
+        .contentMarginsDisabled()
     }
 }
 
 let parisTimeZone = TimeZone(identifier: "Europe/Paris") ?? .current
 
+// MARK: Mise en page
+
+/// Premier widget (avec la barre de recherche) ou widget « suite ».
+enum WidgetPart: Sendable {
+    case first, more
+}
+
+/// Hauteur des lignes : autant de lignes que possible, d'au moins 42 points (un doigt), qui se partagent toute la
+/// hauteur du widget.
+enum WidgetLayout {
+    static let padding: CGFloat = 11
+    static let headerHeight: CGFloat = 30
+    static let headerGap: CGFloat = 7
+    static let rowSpacing: CGFloat = 5
+    static let minRowHeight: CGFloat = 42
+    /// Nombre de lignes du premier widget, retenu pour que le widget « suite » reprenne juste après.
+    static let firstRowsKey = "widget-first-rows"
+
+    static func rows(in size: CGSize, header: Bool) -> (count: Int, height: CGFloat) {
+        let available = size.height - 2 * padding - (header ? headerHeight + headerGap : 0)
+        let count = max(1, Int((available + rowSpacing) / (minRowHeight + rowSpacing)))
+        let height = (available - CGFloat(count - 1) * rowSpacing) / CGFloat(count)
+        return (count, max(minRowHeight, height))
+    }
+}
+
 // MARK: Données
 
-struct AlertsEntry: TimelineEntry {
-    let date: Date
+/// Ce qu'a donné la lecture de Pipedrive (ou les dernières alertes connues).
+struct AlertsData: Sendable {
     let snapshot: WidgetSnapshot?
     /// Pas de données à jour : on montre les dernières connues (ou le message).
     let isStale: Bool
     let message: String?
 
-    static var sample: AlertsEntry {
+    static var sample: AlertsData {
         let now = Date()
         let today = FrenchFormat.apiDay(from: now, timeZone: parisTimeZone)
-        let alerts = [
-            WidgetAlert(id: 1, company: "Entreprise Alpha", person: "Alice Exemple", text: "Relancer pour le devis",
-                        score: 72, dueDate: today, dueTime: nil, dealID: nil, personID: nil, orgID: nil),
-            WidgetAlert(id: 2, company: "Société Bêta", person: "Bruno Exemple", text: "Rappeler pour les accès",
-                        score: 55, dueDate: today, dueTime: nil, dealID: nil, personID: nil, orgID: nil),
-            WidgetAlert(id: 3, company: "Groupe Gamma", person: "Chloé Exemple", text: "Envoyer la proposition",
-                        score: 31, dueDate: today, dueTime: nil, dealID: nil, personID: nil, orgID: nil),
-        ]
-        return AlertsEntry(date: now, snapshot: WidgetSnapshot(alerts: alerts, dueCount: 3, updatedAt: now),
-                           isStale: false, message: nil)
+        let names = ["Entreprise Alpha", "Société Bêta", "Groupe Gamma", "Maison Delta", "Atelier Epsilon",
+                     "Studio Zêta", "Cabinet Êta", "Agence Thêta", "Boutique Iota", "Labo Kappa", "Domaine Lambda",
+                     "Hôtel Mu", "Garage Nu", "Ferme Xi", "Clinique Omicron"]
+        let texts = ["Relancer pour le devis", "Rappeler pour les accès", "Envoyer la proposition", "Point sur la refonte"]
+        let alerts = names.enumerated().map { index, name in
+            WidgetAlert(id: index + 1, company: name, person: "Contact Exemple", text: texts[index % texts.count],
+                        score: Double(80 - index * 5), dueDate: today, dueTime: nil, dealID: nil, personID: nil,
+                        orgID: nil)
+        }
+        return AlertsData(snapshot: WidgetSnapshot(alerts: alerts, dueCount: alerts.count, updatedAt: now),
+                          isStale: false, message: nil)
     }
 }
 
+struct AlertsEntry: TimelineEntry {
+    let date: Date
+    let data: AlertsData
+    /// Première alerte affichée (0 pour le premier widget) et nombre de lignes.
+    let start: Int
+    let rowCount: Int
+    let rowHeight: CGFloat
+}
+
 struct AlertsProvider: TimelineProvider {
+    let part: WidgetPart
+
     func placeholder(in context: Context) -> AlertsEntry {
-        .sample
+        entry(.sample, shape: shape(context, remember: false))
     }
 
     func getSnapshot(in context: Context, completion: @escaping (AlertsEntry) -> Void) {
+        let shape = shape(context, remember: false)
         if context.isPreview {
-            completion(.sample)
+            completion(entry(.sample, shape: shape))
             return
         }
-        Task { completion(await AlertsStore.load()) }
+        Task {
+            let data = await AlertsFetcher.shared.load()
+            completion(entry(data, shape: shape))
+        }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<AlertsEntry>) -> Void) {
+        let shape = shape(context, remember: true)
         Task {
-            let entry = await AlertsStore.load()
+            let data = await AlertsFetcher.shared.load()
             // Échec (réseau, iPhone verrouillé) : nouvel essai plus tôt.
-            let next = Date().addingTimeInterval(entry.isStale ? 10 * 60 : 30 * 60)
-            completion(Timeline(entries: [entry], policy: .after(next)))
+            let next = Date().addingTimeInterval(data.isStale ? 10 * 60 : 30 * 60)
+            completion(Timeline(entries: [entry(data, shape: shape)], policy: .after(next)))
         }
+    }
+
+    private struct Shape {
+        let start: Int
+        let count: Int
+        let height: CGFloat
+    }
+
+    /// Lignes de ce widget. Le widget « suite » reprend après le dernier rang du premier widget.
+    private func shape(_ context: Context, remember: Bool) -> Shape {
+        let layout = WidgetLayout.rows(in: context.displaySize, header: part == .first)
+        switch part {
+        case .first:
+            let count = context.family == .systemSmall ? 3 : layout.count
+            if remember { UserDefaults.standard.set(count, forKey: WidgetLayout.firstRowsKey) }
+            return Shape(start: 0, count: count, height: layout.height)
+        case .more:
+            let stored = UserDefaults.standard.integer(forKey: WidgetLayout.firstRowsKey)
+            let start = stored > 0 ? stored : WidgetLayout.rows(in: context.displaySize, header: true).count
+            return Shape(start: start, count: layout.count, height: layout.height)
+        }
+    }
+
+    private func entry(_ data: AlertsData, shape: Shape) -> AlertsEntry {
+        AlertsEntry(date: Date(), data: data, start: shape.start, rowCount: shape.count, rowHeight: shape.height)
+    }
+}
+
+/// Une seule lecture de Pipedrive pour les deux widgets quand ils se mettent à jour en même temps.
+actor AlertsFetcher {
+    static let shared = AlertsFetcher()
+    private var running: Task<AlertsData, Never>?
+
+    func load() async -> AlertsData {
+        if let running { return await running.value }
+        if let recent = AlertsStore.recentCache(maxAge: 20) {
+            return AlertsData(snapshot: recent, isStale: false, message: nil)
+        }
+        let task = Task { await AlertsStore.fetch() }
+        running = task
+        let data = await task.value
+        running = nil
+        return data
     }
 }
 
@@ -80,7 +185,7 @@ struct AlertsProvider: TimelineProvider {
 enum AlertsStore {
     private static let cacheKey = "widget-snapshot"
 
-    static func load(now: Date = Date()) async -> AlertsEntry {
+    static func fetch(now: Date = Date()) async -> AlertsData {
         let keychain = KeychainStore(service: SharedKeychain.service)
         let cached = readCache()
         let token = keychain.readWithStatus(SharedKeychain.token)
@@ -89,18 +194,24 @@ enum AlertsStore {
             let message = token.status == errSecInteractionNotAllowed
                 ? "Déverrouillez l'iPhone pour mettre à jour."
                 : "Ouvrez YCRM une fois pour afficher vos alertes ici."
-            return AlertsEntry(date: now, snapshot: cached, isStale: true, message: cached == nil ? message : nil)
+            return AlertsData(snapshot: cached, isStale: true, message: cached == nil ? message : nil)
         }
         let client = PipedriveClient(configuration: PipedriveConfiguration(companyDomain: domain, apiToken: apiToken))
         let owner = keychain.read(SharedKeychain.userID).flatMap { Int($0) }
         do {
             let snapshot = try await WidgetFeedLoader(client: client).load(ownerID: owner, timeZone: parisTimeZone, now: now)
             writeCache(snapshot)
-            return AlertsEntry(date: now, snapshot: snapshot, isStale: false, message: nil)
+            return AlertsData(snapshot: snapshot, isStale: false, message: nil)
         } catch {
-            return AlertsEntry(date: now, snapshot: cached, isStale: true,
-                               message: cached == nil ? "Pipedrive ne répond pas, nouvel essai dans 10 min." : nil)
+            return AlertsData(snapshot: cached, isStale: true,
+                              message: cached == nil ? "Pipedrive ne répond pas, nouvel essai dans 10 min." : nil)
         }
+    }
+
+    /// Alertes lues il y a moins de `maxAge` secondes (l'autre widget vient de les lire).
+    static func recentCache(maxAge: TimeInterval) -> WidgetSnapshot? {
+        guard let cached = readCache(), Date().timeIntervalSince(cached.updatedAt) < maxAge else { return nil }
+        return cached
     }
 
     private static func readCache() -> WidgetSnapshot? {
@@ -121,117 +232,107 @@ struct AlertsWidgetView: View {
     let entry: AlertsEntry
 
     var body: some View {
-        switch family {
-        case .systemSmall:
+        if family == .systemSmall {
             SmallAlertsView(entry: entry)
-        case .systemLarge:
-            AlertListView(entry: entry, rows: 7, large: true)
-        default:
-            AlertListView(entry: entry, rows: 3, large: false)
+        } else {
+            AlertListView(entry: entry, showsHeader: entry.start == 0)
         }
     }
 }
 
-/// Moyen et grand : barre de recherche, puis les alertes (chaque ligne ouvre sa fiche Pipedrive).
+/// Moyen et grand : barre de recherche (premier widget), puis une carte par alerte, qui ouvre YCRM sur l'alerte.
 struct AlertListView: View {
     let entry: AlertsEntry
-    let rows: Int
-    let large: Bool
+    let showsHeader: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: large ? 8 : 5) {
-            HStack(spacing: 8) {
-                Image("Logo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: 15)
-                    .accessibilityLabel("YCRM")
-                Link(destination: YCRMLink.search) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("Rechercher")
-                            .font(.system(size: 12))
-                            .lineLimit(1)
-                        Spacer(minLength: 0)
-                    }
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .frame(height: 26)
-                    .background(Capsule().fill(Color("SearchField")))
-                }
-                .accessibilityLabel("Rechercher dans YCRM")
-                if let count = entry.snapshot?.dueCount {
-                    DueCountBadge(count: count)
-                }
+        VStack(alignment: .leading, spacing: WidgetLayout.rowSpacing) {
+            if showsHeader {
+                header
+                    .frame(height: WidgetLayout.headerHeight)
+                    .padding(.bottom, WidgetLayout.headerGap - WidgetLayout.rowSpacing)
             }
             content
+        }
+        .padding(WidgetLayout.padding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Image("Logo")
+                .resizable()
+                .scaledToFit()
+                .frame(height: 16)
+                .accessibilityLabel("YCRM")
+            Link(destination: YCRMLink.search) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("Rechercher")
+                        .font(.system(size: 13))
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 11)
+                .frame(maxHeight: .infinity)
+                .background(Capsule().fill(Color("RowBackground")))
+                .contentShape(Capsule())
+            }
+            .accessibilityLabel("Rechercher dans YCRM")
+            if let count = entry.data.snapshot?.dueCount {
+                DueCountBadge(count: count)
+            }
         }
     }
 
     @ViewBuilder
     private var content: some View {
-        if let snapshot = entry.snapshot {
-            if snapshot.alerts.isEmpty {
-                Spacer(minLength: 0)
-                Text("Aucune alerte à traiter.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                Spacer(minLength: 0)
+        if let snapshot = entry.data.snapshot {
+            let alerts = Array(snapshot.alerts.dropFirst(entry.start).prefix(entry.rowCount))
+            if alerts.isEmpty {
+                message(entry.start == 0 ? "Aucune alerte à traiter." : "Pas d'autres alertes.")
             } else {
-                let alerts = Array(snapshot.alerts.prefix(rows))
-                ForEach(Array(alerts.enumerated()), id: \.element.id) { index, alert in
+                ForEach(alerts) { alert in
                     Link(destination: alert.link) {
-                        AlertRowView(alert: alert, now: entry.date, large: large)
-                    }
-                    if large && index < alerts.count - 1 {
-                        Divider().opacity(0.6)
+                        AlertRowView(alert: alert, now: entry.date, height: entry.rowHeight)
                     }
                 }
                 Spacer(minLength: 0)
-                if large {
-                    Text(footer(snapshot))
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
             }
         } else {
-            Spacer(minLength: 0)
-            Text(entry.message ?? "Chargement…")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-            Spacer(minLength: 0)
+            message(entry.data.message ?? "Chargement…")
         }
     }
 
-    private func footer(_ snapshot: WidgetSnapshot) -> String {
-        let count = snapshot.dueCount
-        let due = count <= 1 ? "\(count) alerte en retard ou du jour" : "\(count) alertes en retard ou du jour"
-        return "\(due) · \(snapshot.updatedText(timeZone: parisTimeZone))"
+    private func message(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
-/// Une alerte : score, société (et contact en grand), texte de l'alerte, date colorée comme dans l'app.
+/// Une alerte, en carte séparée sur toute la largeur : score, société et contact, texte de l'alerte, date colorée
+/// comme dans l'app. Toute la carte se touche.
 struct AlertRowView: View {
     let alert: WidgetAlert
     let now: Date
-    let large: Bool
+    let height: CGFloat
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
+        HStack(alignment: .center, spacing: 9) {
             ScoreBadge(alert: alert)
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     Text(alert.company)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 13.5, weight: .semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .layoutPriority(1)
-                    if large, let person = alert.person, !person.isEmpty {
+                    if let person = alert.person, !person.isEmpty {
                         Text(person)
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
@@ -239,18 +340,22 @@ struct AlertRowView: View {
                     }
                 }
                 Text(alert.text.isEmpty ? "Sans texte" : alert.text)
-                    .font(.system(size: 11.5))
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
             Text(alert.shortDate(now: now, timeZone: parisTimeZone))
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 11.5, weight: .semibold))
                 .foregroundStyle(alert.status(now: now, timeZone: parisTimeZone)?.color ?? .secondary)
                 .lineLimit(1)
                 .fixedSize()
         }
-        .contentShape(Rectangle())
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color("RowBackground")))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.primary.opacity(0.06)))
+        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -267,11 +372,11 @@ struct SmallAlertsView: View {
                     .frame(height: 13)
                     .accessibilityLabel("YCRM")
                 Spacer(minLength: 0)
-                if let count = entry.snapshot?.dueCount {
+                if let count = entry.data.snapshot?.dueCount {
                     DueCountBadge(count: count)
                 }
             }
-            if let snapshot = entry.snapshot {
+            if let snapshot = entry.data.snapshot {
                 if snapshot.alerts.isEmpty {
                     Spacer(minLength: 0)
                     Text("Aucune alerte à traiter.")
@@ -289,12 +394,14 @@ struct SmallAlertsView: View {
                 }
             } else {
                 Spacer(minLength: 0)
-                Text(entry.message ?? "Chargement…")
+                Text(entry.data.message ?? "Chargement…")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
         }
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .widgetURL(YCRMLink.home)
     }
 }
@@ -307,13 +414,13 @@ struct ScoreBadge: View {
     var body: some View {
         let color = alert.score.map { ScoreBand(score: $0).color } ?? Color.secondary.opacity(0.5)
         Text(alert.scoreText ?? "—")
-            .font(.system(size: compact ? 11 : 12, weight: .heavy, design: .rounded).monospacedDigit())
+            .font(.system(size: compact ? 11 : 12.5, weight: .heavy, design: .rounded).monospacedDigit())
             .foregroundStyle(.white)
             .lineLimit(1)
             .minimumScaleFactor(0.8)
-            .frame(minWidth: compact ? 28 : 34)
+            .frame(minWidth: compact ? 28 : 36)
             .padding(.horizontal, 4)
-            .padding(.vertical, 3)
+            .padding(.vertical, 4)
             .background(Capsule().fill(color.gradient))
             .accessibilityLabel(alert.scoreText.map { "Score \($0)" } ?? "Sans score")
     }

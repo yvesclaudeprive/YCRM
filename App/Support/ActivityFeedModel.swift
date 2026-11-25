@@ -183,6 +183,19 @@ final class ActivityFeedModel {
         return "\(ownerIDs.count) utilisateurs"
     }
 
+    /// Alerte touchée dans le widget de l'écran de gauche : la rend visible dans la liste (recherche effacée si elle la
+    /// cache, pages suivantes affichées si besoin). Faux si elle n'est pas dans la liste (faite, décalée, filtrée).
+    func reveal(activityID id: Int) -> Bool {
+        if !search.isEmpty, !filteredItems.contains(where: { $0.id == id }), items.contains(where: { $0.id == id }) {
+            search = ""
+        }
+        guard let index = filteredItems.firstIndex(where: { $0.id == id }) else { return false }
+        if index >= visibleCount {
+            visibleCount = (index / Self.pageSize + 1) * Self.pageSize
+        }
+        return true
+    }
+
     /// Pagination au scroll : quand la dernière ligne affichée apparaît, on en montre 30 de plus.
     func loadMoreIfNeeded(after item: ActivityItem) {
         guard canLoadMore, item.id == visibleItems.last?.id else { return }

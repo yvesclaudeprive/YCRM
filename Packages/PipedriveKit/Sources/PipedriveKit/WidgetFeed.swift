@@ -1,7 +1,8 @@
 import Foundation
 
 /// Liens « ycrm:// » du widget de l'écran de gauche vers l'app (demande d'Yves du 25/11/2026) :
-/// la barre de recherche ouvre la recherche de l'app, une alerte ouvre sa fiche Pipedrive.
+/// la barre de recherche ouvre la recherche de l'app, une alerte ouvre YCRM sur sa carte (et non plus Pipedrive :
+/// retour d'Yves du 25/11/2026).
 public enum YCRMLink {
     public static let scheme = "ycrm"
 
@@ -10,18 +11,15 @@ public enum YCRMLink {
         case home
         /// La liste, champ de recherche actif (clavier ouvert).
         case search
-        /// La fiche Pipedrive de l'alerte : l'affaire, sinon la personne, sinon la société.
-        case open(dealID: Int?, personID: Int?, orgID: Int?)
+        /// La liste, sur la carte de cette alerte (identifiant de l'activité Pipedrive).
+        case alert(id: Int)
     }
 
     public static var home: URL { link(host: "home", items: []) }
     public static var search: URL { link(host: "search", items: []) }
 
-    public static func open(dealID: Int?, personID: Int?, orgID: Int?) -> URL {
-        let items = [("deal", dealID), ("person", personID), ("org", orgID)].compactMap { name, value in
-            value.map { URLQueryItem(name: name, value: String($0)) }
-        }
-        return items.isEmpty ? home : link(host: "open", items: items)
+    public static func alert(id: Int) -> URL {
+        link(host: "alert", items: [URLQueryItem(name: "id", value: String(id))])
     }
 
     /// Ce que demande un lien « ycrm:// » (nil pour un autre lien).
@@ -34,11 +32,10 @@ public enum YCRMLink {
         switch components?.host?.lowercased() {
         case "search":
             return .search
-        case "open":
-            let deal = number("deal"), person = number("person"), org = number("org")
-            if deal == nil && person == nil && org == nil { return .home }
-            return .open(dealID: deal, personID: person, orgID: org)
+        case "alert":
+            return number("id").map { .alert(id: $0) } ?? .home
         default:
+            // Y compris « ycrm://open?… » des premiers widgets (fiche Pipedrive) : la liste.
             return .home
         }
     }
@@ -89,8 +86,8 @@ public struct WidgetAlert: Codable, Hashable, Sendable, Identifiable {
                   dealID: item.activity.dealID, personID: item.person?.id ?? item.activity.personID, orgID: item.orgID)
     }
 
-    /// Lien vers l'app, qui ouvre la fiche Pipedrive (comme un clic sur la carte).
-    public var link: URL { YCRMLink.open(dealID: dealID, personID: personID, orgID: orgID) }
+    /// Lien vers l'app, qui ouvre la liste sur la carte de l'alerte.
+    public var link: URL { YCRMLink.alert(id: id) }
 
     /// « 62,5 » ; nil sans score.
     public var scoreText: String? { score.map { FrenchFormat.number($0, maxDecimals: 1) } }
@@ -151,8 +148,8 @@ public struct WidgetSnapshot: Codable, Hashable, Sendable {
 /// Chargement du widget : mes activités ouvertes, dans l'ordre de l'app (en retard et du jour d'abord, par score).
 /// Seules les activités jusqu'à aujourd'hui sont lues, sauf s'il y en a moins que d'alertes à afficher.
 public struct WidgetFeedLoader: Sendable {
-    /// Nombre d'alertes gardées (le grand widget en affiche le plus).
-    public static let maxAlerts = 8
+    /// Nombre d'alertes gardées : le grand widget et le widget « suite » l'un sous l'autre en affichent ≈ 15.
+    public static let maxAlerts = 20
 
     let client: PipedriveClient
 

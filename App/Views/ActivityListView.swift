@@ -75,71 +75,22 @@ struct ActivityListView: View {
     @State private var headerHidden = false
     @State private var lastScrollY: CGFloat = 0
     @State private var headerToggledAt = Date.distantPast
+    /// Alerte touchée dans le widget : la liste défile jusqu'à sa carte, entourée un instant.
+    @State private var scrollTarget: Int?
+    @State private var highlightedID: Int?
 
     private enum CallChannel {
         case phone, onoff, aircall, whatsapp, sms
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 12) {
-                if let progress = feed.tagsProgress {
-                    tagsProgressBanner(progress)
+        ScrollViewReader { proxy in
+            feedScroll
+                .onChange(of: scrollTarget) { _, target in
+                    guard let target else { return }
+                    withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo(target, anchor: .top) }
+                    scrollTarget = nil
                 }
-                if let error = feed.errorMessage, !feed.items.isEmpty {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(Color.yateoRed)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                ForEach(Array(feed.visibleItems.enumerated()), id: \.element.id) { index, item in
-                    let upcoming = feed.isUpcoming(item)
-                    let previous = index > 0 ? feed.visibleItems[index - 1] : nil
-                    let groupStarts = previous.map { feed.isUpcoming($0) != upcoming } ?? true
-                    if upcoming, groupStarts {
-                        sectionHeader(icon: "calendar.badge.clock", text: "À venir", count: feed.upcomingCount)
-                    }
-                    if item.score == nil, groupStarts || previous?.score != nil {
-                        sectionHeader(icon: "number.circle", text: "Sans score",
-                                      count: feed.unscoredCount(upcoming: upcoming))
-                    }
-                    SwipeReveal(actions: swipeActions(for: item), isOpen: swipeBinding(for: item)) {
-                        ActivityRow(
-                            item: item,
-                            isBusy: busyItemIDs.contains(item.id),
-                            whatsappInstalled: whatsappInstalled,
-                            ownerName: item.activity.ownerID == session.userID ? nil : feed.userName(item.activity.ownerID),
-                            isAlternate: !index.isMultiple(of: 2),
-                            tags: feed.tags[item.id],
-                            perform: { action in handle(action, for: item) }
-                        )
-                    }
-                    .contextMenu {
-                        Button("Note pour Claude", systemImage: "bubble.left.and.text.bubble.right") {
-                            handle(.noteForClaude, for: item)
-                        }
-                        Button("Analyse des devis", systemImage: "doc.text.magnifyingglass") {
-                            handle(.showQuotes, for: item)
-                        }
-                    }
-                    .onAppear { feed.loadMoreIfNeeded(after: item) }
-                    .task(id: feed.tagsGeneration) { await feed.loadTags(for: item, session: session) }
-                }
-                if feed.canLoadMore {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .onAppear {
-                            if let last = feed.visibleItems.last { feed.loadMoreIfNeeded(after: last) }
-                        }
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.top, 10)
-            .padding(.bottom, 24)
-            .background(GeometryReader { proxy in
-                Color.clear.preference(key: ScrollOffsetKey.self, value: proxy.frame(in: .named(Self.scrollSpace)).minY)
-            })
         }
         .coordinateSpace(name: Self.scrollSpace)
         .onPreferenceChange(ScrollOffsetKey.self) { y in
@@ -256,6 +207,78 @@ struct ActivityListView: View {
         }
     }
 
+    /// La liste des alertes (défilement suivi pour masquer la barre du haut pendant une recherche).
+    private var feedScroll: some View {
+        ScrollView {
+            LazyVStack(spacing: 12) {
+                if let progress = feed.tagsProgress {
+                    tagsProgressBanner(progress)
+                }
+                if let error = feed.errorMessage, !feed.items.isEmpty {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(Color.yateoRed)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                ForEach(Array(feed.visibleItems.enumerated()), id: \.element.id) { index, item in
+                    let upcoming = feed.isUpcoming(item)
+                    let previous = index > 0 ? feed.visibleItems[index - 1] : nil
+                    let groupStarts = previous.map { feed.isUpcoming($0) != upcoming } ?? true
+                    if upcoming, groupStarts {
+                        sectionHeader(icon: "calendar.badge.clock", text: "À venir", count: feed.upcomingCount)
+                    }
+                    if item.score == nil, groupStarts || previous?.score != nil {
+                        sectionHeader(icon: "number.circle", text: "Sans score",
+                                      count: feed.unscoredCount(upcoming: upcoming))
+                    }
+                    SwipeReveal(actions: swipeActions(for: item), isOpen: swipeBinding(for: item)) {
+                        ActivityRow(
+                            item: item,
+                            isBusy: busyItemIDs.contains(item.id),
+                            whatsappInstalled: whatsappInstalled,
+                            ownerName: item.activity.ownerID == session.userID ? nil : feed.userName(item.activity.ownerID),
+                            isAlternate: !index.isMultiple(of: 2),
+                            tags: feed.tags[item.id],
+                            perform: { action in handle(action, for: item) }
+                        )
+                    }
+                    .overlay {
+                        // Alerte touchée dans le widget de l'écran de gauche : entourée un instant.
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .strokeBorder(Color.yateoRed, lineWidth: 3)
+                            .opacity(highlightedID == item.id ? 1 : 0)
+                            .animation(.easeInOut(duration: 0.3), value: highlightedID)
+                            .allowsHitTesting(false)
+                    }
+                    .contextMenu {
+                        Button("Note pour Claude", systemImage: "bubble.left.and.text.bubble.right") {
+                            handle(.noteForClaude, for: item)
+                        }
+                        Button("Analyse des devis", systemImage: "doc.text.magnifyingglass") {
+                            handle(.showQuotes, for: item)
+                        }
+                    }
+                    .onAppear { feed.loadMoreIfNeeded(after: item) }
+                    .task(id: feed.tagsGeneration) { await feed.loadTags(for: item, session: session) }
+                }
+                if feed.canLoadMore {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .onAppear {
+                            if let last = feed.visibleItems.last { feed.loadMoreIfNeeded(after: last) }
+                        }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 24)
+            .background(GeometryReader { proxy in
+                Color.clear.preference(key: ScrollOffsetKey.self, value: proxy.frame(in: .named(Self.scrollSpace)).minY)
+            })
+        }
+    }
+
     // MARK: Barre du haut : logo, recherche, filtre, réglages
 
     /// Barre du haut : logo, champ de recherche arrondi, boutons ronds Filtres (point rouge si filtre actif) et Réglages.
@@ -359,7 +382,7 @@ struct ActivityListView: View {
         if hidden { searchFocused = false }
     }
 
-    /// Liens « ycrm:// » du widget de l'écran de gauche : la recherche, ou la fiche Pipedrive d'une alerte.
+    /// Liens « ycrm:// » du widget de l'écran de gauche : la recherche, ou la carte d'une alerte.
     private func handleLink(_ url: URL) {
         guard let destination = YCRMLink.destination(of: url) else { return }
         setHeader(hidden: false)
@@ -371,13 +394,31 @@ struct ActivityListView: View {
                 try? await Task.sleep(for: .milliseconds(400))
                 searchFocused = true
             }
-        case let .open(dealID, personID, orgID):
-            let link = ActionLinks.pipedrive(domain: session.companyDomain, dealID: dealID, personID: personID, orgID: orgID)
-            Task {
-                try? await Task.sleep(for: .milliseconds(300))
-                open(link, failure: "Aucune fiche Pipedrive liée à cette alerte.")
-            }
+        case let .alert(id):
+            Task { await focusAlert(id) }
         }
+    }
+
+    /// Alerte touchée dans le widget (retour d'Yves du 25/11/2026 : YCRM, pas Pipedrive) : la liste défile jusqu'à
+    /// sa carte, entourée de rouge un instant.
+    private func focusAlert(_ id: Int) async {
+        // Lancement depuis le widget : on attend le premier chargement de la liste.
+        var waited = 0
+        while !feed.hasLoaded && waited < 60 {
+            try? await Task.sleep(for: .milliseconds(250))
+            waited += 1
+        }
+        guard feed.reveal(activityID: id) else {
+            if feed.hasLoaded {
+                show(Toast(message: "Cette alerte n'est plus dans la liste (faite, décalée ou masquée par un filtre)."))
+            }
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(200))
+        scrollTarget = id
+        highlightedID = id
+        try? await Task.sleep(for: .seconds(2.5))
+        if highlightedID == id { highlightedID = nil }
     }
 
     private var explanationBinding: Binding<Bool> {
