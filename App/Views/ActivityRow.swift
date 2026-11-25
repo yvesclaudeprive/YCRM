@@ -366,18 +366,22 @@ struct ActivityRow: View {
     @ViewBuilder
     private var scoreBadge: some View {
         if let score = item.score, item.scoreIsManual {
-            // Score verrouillé à la main (« Source de la qualification » = Manuel, demande d'Yves du 25/11/2026) :
-            // un cadenas dans la couleur du score, à la place de la bulle.
+            // Score verrouillé à la main (« Source de la qualification » = Manuel, demandes d'Yves du 25/11/2026) :
+            // la même bulle de couleur, plus large, avec le cadenas dedans.
             let color = ScoreBand(score: score).color
-            HStack(spacing: 3) {
+            HStack(spacing: 4) {
                 Image(systemName: "lock.fill")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                 Text(FrenchFormat.number(score, maxDecimals: 1))
                     .font(.system(.subheadline, design: .rounded).weight(.heavy).monospacedDigit())
             }
-            .foregroundStyle(color)
-            .padding(.horizontal, 2)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
             .padding(.vertical, 4)
+            .background(
+                Capsule().fill(LinearGradient(colors: [color.opacity(0.85), color], startPoint: .top, endPoint: .bottom))
+            )
+            .shadow(color: color.opacity(0.35), radius: 4, x: 0, y: 2)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Score \(FrenchFormat.number(score, maxDecimals: 1)), verrouillé à la main")
         } else if let score = item.score {

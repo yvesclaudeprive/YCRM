@@ -428,19 +428,20 @@ struct ScoreBadge: View {
     var body: some View {
         let color = alert.score.map { ScoreBand(score: $0).color } ?? Color.secondary.opacity(0.5)
         if alert.isManualScore, let text = alert.scoreText {
-            // Score verrouillé à la main : cadenas dans la couleur du score, à la place de la bulle (comme dans l'app).
+            // Score verrouillé à la main : la même bulle, plus large, avec le cadenas dedans (comme dans l'app).
             HStack(spacing: 2) {
                 Image(systemName: "lock.fill")
-                    .font(.system(size: compact ? 9 : 11, weight: .bold))
+                    .font(.system(size: compact ? 8 : 9.5, weight: .bold))
                 Text(text)
                     .font(.system(size: compact ? 11 : 12.5, weight: .heavy, design: .rounded).monospacedDigit())
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
-            .foregroundStyle(color)
-            .frame(minWidth: compact ? 28 : 36)
+            .foregroundStyle(.white)
+            .frame(minWidth: compact ? 38 : 48)
             .padding(.horizontal, 4)
             .padding(.vertical, 4)
+            .background(Capsule().fill(color.gradient))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Score \(text), verrouillé à la main")
         } else {
