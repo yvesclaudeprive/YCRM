@@ -6,8 +6,8 @@ import PipedriveKit
 /// Widgets de l'écran de gauche (demandes d'Yves du 25/11/2026) :
 /// - « YCRM » : une barre de recherche qui ouvre la recherche de l'app, puis les premières alertes de la liste
 ///   (même ordre que l'app : en retard et du jour d'abord, par score) ;
-/// - « YCRM · suite » : les alertes suivantes, à poser sous le premier pour remplir l'écran (iOS limite un widget
-///   à la moitié de la hauteur de l'écran).
+/// - « YCRM · suite » : les alertes suivantes, à poser sous le premier (avant iOS 27, un widget ne dépasse pas la
+///   moitié de l'écran). Sous iOS 27, les deux existent aussi en très haut (4 × 6), presque tout l'écran.
 /// Chaque alerte est une carte séparée, haute (grande zone à toucher), qui ouvre YCRM sur la carte de l'alerte.
 /// Le widget lit Pipedrive lui-même (jeton du trousseau de l'app) toutes les 30 min environ ; l'app le relance
 /// quand elle passe en arrière-plan.
@@ -27,7 +27,7 @@ struct AlertsWidget: Widget {
         }
         .configurationDisplayName("YCRM")
         .description("Recherche et premières alertes, triées par score.")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .supportedFamilies(WidgetLayout.families([.systemSmall, .systemMedium, .systemLarge]))
         .contentMarginsDisabled()
     }
 }
@@ -40,7 +40,7 @@ struct MoreAlertsWidget: Widget {
         }
         .configurationDisplayName("YCRM · suite")
         .description("Les alertes suivantes : à placer sous le widget YCRM pour remplir l'écran.")
-        .supportedFamilies([.systemMedium, .systemLarge])
+        .supportedFamilies(WidgetLayout.families([.systemMedium, .systemLarge]))
         .contentMarginsDisabled()
     }
 }
@@ -64,6 +64,16 @@ enum WidgetLayout {
     static let minRowHeight: CGFloat = 42
     /// Nombre de lignes du premier widget, retenu pour que le widget « suite » reprenne juste après.
     static let firstRowsKey = "widget-first-rows"
+
+    /// Tailles proposées, plus, sous iOS 27, le widget très haut (4 × 6, presque tout l'écran : demande d'Yves du
+    /// 25/11/2026, la 4e taille grisée). Il n'existe qu'avec le SDK d'Xcode 27 (image GitHub « xcode-27 »).
+    static func families(_ base: [WidgetFamily]) -> [WidgetFamily] {
+        var families = base
+        if #available(iOS 27.0, *) {
+            families.append(.systemExtraLargePortrait)
+        }
+        return families
+    }
 
     static func rows(in size: CGSize, header: Bool) -> (count: Int, height: CGFloat) {
         let available = size.height - 2 * padding - (header ? headerHeight + headerGap : 0)

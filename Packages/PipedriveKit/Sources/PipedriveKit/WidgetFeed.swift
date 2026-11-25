@@ -148,8 +148,8 @@ public struct WidgetSnapshot: Codable, Hashable, Sendable {
 /// Chargement du widget : mes activités ouvertes, dans l'ordre de l'app (en retard et du jour d'abord, par score).
 /// Seules les activités jusqu'à aujourd'hui sont lues, sauf s'il y en a moins que d'alertes à afficher.
 public struct WidgetFeedLoader: Sendable {
-    /// Nombre d'alertes gardées : le grand widget et le widget « suite » l'un sous l'autre en affichent ≈ 15.
-    public static let maxAlerts = 20
+    /// Nombre d'alertes gardées : le widget très haut d'iOS 27 en affiche ≈ 12, et le widget « suite » la suite.
+    public static let maxAlerts = 30
 
     let client: PipedriveClient
 

@@ -31,24 +31,27 @@ jobs:
 
   ios:
     name: compilation app iOS (simulateur)
-    runs-on: macos-26
+    # Même Xcode que l'envoi TestFlight (image GitHub « xcode-27 », macOS 27, Apple Silicon).
+    runs-on: xcode-27
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Choisir Xcode 26 (exigé par Apple pour l'envoi)
+      # Xcode 27 : le widget très haut d'iOS 27 (`.systemExtraLargePortrait`) n'existe qu'avec son SDK.
+      # Jamais une bêta ni une version candidate (Apple refuse leurs envois).
+      - name: Choisir Xcode 27 (widget très haut d'iOS 27)
         run: |
           set -euo pipefail
-          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
+          XCODE=$(ls -d /Applications/Xcode_27*.app 2>/dev/null | grep -v -i -E 'beta|release_candidate|_rc' | sort -V | tail -1 || true)
           if [ -n "$XCODE" ]; then
             sudo xcode-select -s "$XCODE/Contents/Developer"
           fi
           VERSION=$(xcodebuild -version | sed -n 1p)
           echo "$VERSION"
           case "$VERSION" in
-            "Xcode 26"*|"Xcode 27"*) ;;
-            *) echo "::error::Xcode 26 ou plus récent introuvable sur ce runner ($VERSION)."; ls -d /Applications/Xcode*.app; exit 1 ;;
+            "Xcode 27"*|"Xcode 28"*|"Xcode 29"*) ;;
+            *) echo "::error::Xcode 27 ou plus récent introuvable sur ce runner ($VERSION)."; ls -d /Applications/Xcode*.app; exit 1 ;;
           esac
       - name: Outils
         run: brew install xcodegen
