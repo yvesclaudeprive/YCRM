@@ -61,7 +61,8 @@ enum WidgetLayout {
     static let headerHeight: CGFloat = 30
     static let headerGap: CGFloat = 7
     static let rowSpacing: CGFloat = 5
-    static let minRowHeight: CGFloat = 42
+    /// Assez haut pour la société et le texte de l'alerte sur 2 lignes (demande d'Yves du 25/11/2026).
+    static let minRowHeight: CGFloat = 52
     /// Nombre de lignes du premier widget, retenu pour que le widget « suite » reprenne juste après.
     static let firstRowsKey = "widget-first-rows"
 
@@ -335,10 +336,10 @@ struct AlertRowView: View {
     var body: some View {
         HStack(alignment: .center, spacing: 9) {
             ScoreBadge(alert: alert)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
                     Text(alert.company)
-                        .font(.system(size: 13.5, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .layoutPriority(1)
@@ -349,10 +350,13 @@ struct AlertRowView: View {
                             .lineLimit(1)
                     }
                 }
+                // Texte de l'alerte sur 2 lignes plutôt qu'une ligne coupée (demande d'Yves du 25/11/2026).
                 Text(alert.text.isEmpty ? "Sans texte" : alert.text)
-                    .font(.system(size: 12))
+                    .font(.system(size: 11.5))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 4)
             Text(alert.shortDate(now: now, timeZone: parisTimeZone))
