@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 import PipedriveKit
 
 /// Choix d'un numéro ou d'une adresse quand le contact en a plusieurs.
@@ -48,6 +49,7 @@ struct Toast: Identifiable {
 struct ActivityListView: View {
     @Environment(AppSession.self) private var session
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
     @State private var feed = ActivityFeedModel()
     @State private var showFilter = false
     @State private var showSettings = false
@@ -68,6 +70,11 @@ struct ActivityListView: View {
     /// Bloc glissé vers la droite (boutons « Note pour Claude » / « Analyse devis » visibles).
     @State private var swipedItemID: Int?
     @State private var explanation: String?
+    @FocusState private var searchFocused: Bool
+    /// Barre du haut masquée pendant une recherche quand on fait défiler vers le bas (demande d'Yves du 25/11/2026).
+    @State private var headerHidden = false
+    @State private var lastScrollY: CGFloat = 0
+    @State private var headerToggledAt = Date.distantPast
 
     private enum CallChannel {
         case phone, onoff, aircall, whatsapp, sms
@@ -130,15 +137,42 @@ struct ActivityListView: View {
             .padding(.horizontal, 12)
             .padding(.top, 10)
             .padding(.bottom, 24)
+            .background(GeometryReader { proxy in
+                Color.clear.preference(key: ScrollOffsetKey.self, value: proxy.frame(in: .named(Self.scrollSpace)).minY)
+            })
         }
+        .coordinateSpace(name: Self.scrollSpace)
+        .onPreferenceChange(ScrollOffsetKey.self) { y in
+            MainActor.assumeIsolated { scrolled(to: y) }
+        }
+        .scrollDismissesKeyboard(.immediately)
         .background(Color.appBackground.ignoresSafeArea())
         .overlay { placeholder }
         .refreshable { await feed.reload(session: session, fresh: true) }
-        .safeAreaInset(edge: .top, spacing: 0) { header }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if headerHidden {
+                // Barre masquée : la zone de l'heure et de la batterie reste floutée.
+                Color.clear
+                    .frame(height: 0)
+                    .background(.ultraThinMaterial)
+            } else {
+                header
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.22), value: headerHidden)
         .overlay(alignment: .bottom) { toastView }
         .task {
             whatsappInstalled = InstalledApps.whatsapp
             if !feed.hasLoaded { await feed.reload(session: session) }
+        }
+        .onOpenURL { handleLink($0) }
+        .onChange(of: scenePhase) { _, phase in
+            // Le widget de l'écran de gauche relit Pipedrive quand on quitte l'app (alertes faites, décalées…).
+            if phase == .background { WidgetCenter.shared.reloadAllTimelines() }
+        }
+        .onChange(of: feed.search) { _, text in
+            if text.isEmpty { setHeader(hidden: false) }
         }
         .sheet(isPresented: $showFilter) {
             FilterView(preset: feed.datePreset, customFrom: feed.customFrom, customTo: feed.customTo,
@@ -238,6 +272,7 @@ struct ActivityListView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
                 TextField("Société, contact, texte…", text: searchBinding)
+                    .focused($searchFocused)
                     .font(.subheadline)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -296,6 +331,53 @@ struct ActivityListView: View {
         }
         .buttonStyle(PressableStyle())
         .accessibilityLabel(label)
+    }
+
+    // MARK: Barre du haut masquée au défilement, liens du widget
+
+    private static let scrollSpace = "feedScroll"
+
+    /// Pendant une recherche, la barre du haut disparaît quand on fait défiler vers le bas et revient dès qu'on
+    /// remonte (demande d'Yves du 25/11/2026). `y` : haut de la liste dans la zone de défilement.
+    private func scrolled(to y: CGFloat) {
+        let delta = y - lastScrollY
+        lastScrollY = y
+        guard !feed.search.isEmpty else { return }
+        // Pas d'aller-retour pendant l'animation (la hauteur de la barre change la zone de défilement).
+        guard Date().timeIntervalSince(headerToggledAt) > 0.4 else { return }
+        if delta < -10 && !headerHidden {
+            setHeader(hidden: true)
+        } else if delta > 10 && headerHidden {
+            setHeader(hidden: false)
+        }
+    }
+
+    private func setHeader(hidden: Bool) {
+        guard headerHidden != hidden else { return }
+        headerHidden = hidden
+        headerToggledAt = Date()
+        if hidden { searchFocused = false }
+    }
+
+    /// Liens « ycrm:// » du widget de l'écran de gauche : la recherche, ou la fiche Pipedrive d'une alerte.
+    private func handleLink(_ url: URL) {
+        guard let destination = YCRMLink.destination(of: url) else { return }
+        setHeader(hidden: false)
+        switch destination {
+        case .home:
+            break
+        case .search:
+            Task {
+                try? await Task.sleep(for: .milliseconds(400))
+                searchFocused = true
+            }
+        case let .open(dealID, personID, orgID):
+            let link = ActionLinks.pipedrive(domain: session.companyDomain, dealID: dealID, personID: personID, orgID: orgID)
+            Task {
+                try? await Task.sleep(for: .milliseconds(300))
+                open(link, failure: "Aucune fiche Pipedrive liée à cette alerte.")
+            }
+        }
     }
 
     private var explanationBinding: Binding<Bool> {
@@ -1072,4 +1154,13 @@ struct RescheduleRequest: Identifiable {
     let item: ActivityItem
     var logged: LoggedAlert? = nil
     var id: Int { item.id }
+}
+
+/// Position du haut de la liste pendant le défilement (masquage de la barre du haut).
+private struct ScrollOffsetKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
 }

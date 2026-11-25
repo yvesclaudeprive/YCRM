@@ -20,8 +20,11 @@ targets:
     platform: iOS
     sources:
       - path: App
+      - path: Shared
     dependencies:
       - package: PipedriveKit
+      # Widget de l'écran de gauche (embarqué dans l'app).
+      - target: YCRMWidget
     info:
       path: Config/Info.plist
       properties:
@@ -36,6 +39,11 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         ITSAppUsesNonExemptEncryption: false
+        # Liens « ycrm:// » du widget : recherche, fiche Pipedrive d'une alerte.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.yateo.ycrm
+            CFBundleURLSchemes:
+              - ycrm
         # Apps dont YCRM vérifie la présence (WhatsApp grisé s'il manque, détection du lien OnOff).
         LSApplicationQueriesSchemes:
           - whatsapp
@@ -79,3 +87,34 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_STYLE: Automatic
     scheme: {}
+
+  # Widget de l'écran de gauche (demande d'Yves du 25/11/2026) : recherche + premières alertes.
+  # Il lit le jeton Pipedrive dans le trousseau de l'app (groupe de trousseau = identifiant de l'app) :
+  # entitlements appliqués par une signature ad hoc avant l'envoi (workflow testflight).
+  YCRMWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widget
+      - path: Shared
+    dependencies:
+      - package: PipedriveKit
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    info:
+      path: Config/Widget-Info.plist
+      properties:
+        CFBundleDisplayName: YCRM
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: fr
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yateo.ycrm.widget
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: Widget/YCRMWidget.entitlements
+        ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME: WidgetBackground
+        SKIP_INSTALL: YES

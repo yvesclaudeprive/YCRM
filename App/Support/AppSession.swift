@@ -1,14 +1,15 @@
 import Foundation
 import Observation
 import PipedriveKit
+import WidgetKit
 
 let parisTimeZone = TimeZone(identifier: "Europe/Paris") ?? .current
 
 private enum StorageKeys {
-    static let keychainService = "com.yateo.ycrm"
-    static let token = "pipedrive-api-token"
-    static let domain = "pipedrive-company-domain"
-    static let userID = "pipedrive-user-id"
+    static let keychainService = SharedKeychain.service
+    static let token = SharedKeychain.token
+    static let domain = SharedKeychain.domain
+    static let userID = SharedKeychain.userID
     static let myEmail = "my-email"
     static let onoffTemplate = "onoff-link-template"
     static let superhumanTemplate = "superhuman-link-template"
@@ -77,6 +78,21 @@ final class AppSession {
         hasClaudeToken = !(store.read(StorageKeys.claudeToken) ?? "").isEmpty
         googleClientID = defaults.string(forKey: StorageKeys.googleClientID) ?? ""
         isGoogleConnected = !(store.read(StorageKeys.googleRefreshToken) ?? "").isEmpty
+        shareWithWidget()
+    }
+
+    // MARK: Widget de l'écran de gauche
+
+    /// Le widget lit le jeton dans le trousseau, mais pas les réglages de l'app : le sous-domaine Pipedrive et mon
+    /// identifiant y sont recopiés (seulement s'ils ont changé).
+    private func shareWithWidget() {
+        guard hasToken else { return }
+        if !companyDomain.isEmpty, keychain.read(SharedKeychain.domain) != companyDomain {
+            try? keychain.save(companyDomain, account: SharedKeychain.domain, access: .afterFirstUnlock)
+        }
+        if let userID, keychain.read(SharedKeychain.userID) != String(userID) {
+            try? keychain.save(String(userID), account: SharedKeychain.userID, access: .afterFirstUnlock)
+        }
     }
 
     // MARK: Google Agenda (bouton « Créer un RDV »)
@@ -185,6 +201,8 @@ final class AppSession {
             defaults.set(email, forKey: StorageKeys.myEmail)
         }
         hasToken = true
+        shareWithWidget()
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     /// Identifiant Pipedrive du titulaire du jeton (filtre « mes activités »).
@@ -194,6 +212,7 @@ final class AppSession {
         let me = try await makeClient().currentUser()
         userID = me.id
         defaults.set(me.id, forKey: StorageKeys.userID)
+        shareWithWidget()
         if myEmail.isEmpty, let email = me.email, !email.isEmpty {
             myEmail = email
             defaults.set(email, forKey: StorageKeys.myEmail)
@@ -221,8 +240,10 @@ final class AppSession {
 
     func disconnect() {
         keychain.delete(StorageKeys.token)
+        keychain.delete(SharedKeychain.userID)
         defaults.removeObject(forKey: StorageKeys.userID)
         userID = nil
         hasToken = false
+        WidgetCenter.shared.reloadAllTimelines()
     }
 }

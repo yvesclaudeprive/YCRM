@@ -90,6 +90,30 @@ jobs:
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" -quiet
 
+      # Le widget de l'écran de gauche lit le jeton Pipedrive dans le trousseau de l'app : son entitlement
+      # (groupe de trousseau = identifiant de l'app) doit survivre à la signature par Apple. Une archive non signée
+      # n'en garde aucun : on signe le widget « ad hoc » avec ses entitlements, que l'export reprend en signant
+      # pour de vrai. L'app elle-même reste non signée, comme avant.
+      - name: Entitlements du widget (signature ad hoc avant l'export)
+        run: |
+          set -euo pipefail
+          APPEX="$ARCHIVE_PATH/Products/Applications/YCRM.app/PlugIns/YCRMWidget.appex"
+          if [ ! -d "$APPEX" ]; then
+            echo "::error::Widget absent de l'archive."
+            ls "$ARCHIVE_PATH/Products/Applications/YCRM.app/PlugIns" || true
+            exit 1
+          fi
+          ENTITLEMENTS="$RUNNER_TEMP/YCRMWidget.entitlements"
+          sed "s/\$(AppIdentifierPrefix)/${APPLE_TEAM_ID}./" Widget/YCRMWidget.entitlements > "$ENTITLEMENTS"
+          plutil -lint "$ENTITLEMENTS"
+          codesign --force --sign - --entitlements "$ENTITLEMENTS" "$APPEX"
+          if ! codesign -d --entitlements - "$APPEX" 2>/dev/null | grep -q "${APPLE_TEAM_ID}.com.yateo.ycrm"; then
+            echo "::error::Groupe de trousseau du widget absent après la signature ad hoc."
+            exit 1
+          fi
+          rm -f "$ENTITLEMENTS"
+          echo "Widget signé ad hoc avec son groupe de trousseau."
+
       - name: Signer et envoyer à App Store Connect
         run: |
           set -euo pipefail
