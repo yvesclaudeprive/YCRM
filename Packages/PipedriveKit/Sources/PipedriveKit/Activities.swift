@@ -176,9 +176,12 @@ public struct DealSummary: Hashable, Sendable, Identifiable {
     public let quoteAnalysis: String?
     /// Création de l'affaire (format API) : borne de l'historique de l'affaire (`HistoryScope`).
     public let addTime: String?
+    /// Score verrouillé à la main : « Source de la qualification » = « Manuel » (`ScoreFields`).
+    public let scoreIsManual: Bool
 
     public init(id: Int, title: String, orgID: Int?, personID: Int?, score: Double?, status: String? = nil,
-                wonTime: String? = nil, signedDate: String? = nil, quoteAnalysis: String? = nil, addTime: String? = nil) {
+                wonTime: String? = nil, signedDate: String? = nil, quoteAnalysis: String? = nil, addTime: String? = nil,
+                scoreIsManual: Bool = false) {
         self.id = id
         self.title = title
         self.orgID = orgID
@@ -189,6 +192,14 @@ public struct DealSummary: Hashable, Sendable, Identifiable {
         self.signedDate = signedDate
         self.quoteAnalysis = quoteAnalysis
         self.addTime = addTime
+        self.scoreIsManual = scoreIsManual
+    }
+
+    /// La même affaire avec un autre score (« Modifier le score », « Score auto »).
+    public func with(score: Double?, manual: Bool) -> DealSummary {
+        DealSummary(id: id, title: title, orgID: orgID, personID: personID, score: score, status: status,
+                    wonTime: wonTime, signedDate: signedDate, quoteAnalysis: quoteAnalysis, addTime: addTime,
+                    scoreIsManual: manual)
     }
 
     /// Date de création de l'affaire.
@@ -197,7 +208,8 @@ public struct DealSummary: Hashable, Sendable, Identifiable {
     /// Affaire en cours (ni gagnée ni perdue) ; vrai si le statut est inconnu.
     public var isOpen: Bool { status == nil || status == "open" }
 
-    init?(json: JSONValue, scoreCode: String?, signedCode: String? = nil, analysisCode: String? = nil) {
+    init?(json: JSONValue, scoreCode: String?, signedCode: String? = nil, analysisCode: String? = nil,
+          sourceCode: String? = nil, manualOptionID: Int? = nil) {
         guard let id = json["id"].intValue else { return nil }
         var score: Double?
         if let scoreCode {
@@ -216,10 +228,18 @@ public struct DealSummary: Hashable, Sendable, Identifiable {
             analysis = (raw.isNull ? json[analysisCode].stringValue : (raw.stringValue ?? raw["value"].stringValue))
                 .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
         }
+        var manual = false
+        if let sourceCode {
+            var raw = json["custom_fields"][sourceCode]
+            if raw.isNull { raw = json[sourceCode] }
+            let option = raw.intValue ?? raw["id"].intValue ?? raw["value"].intValue
+            manual = (manualOptionID != nil && option == manualOptionID)
+                || Label.matches(raw.stringValue ?? raw["label"].stringValue ?? "", ScoreFields.manualLabel)
+        }
         self.init(id: id, title: json["title"].stringValue ?? "Affaire #\(id)", orgID: json["org_id"].intValue,
                   personID: json["person_id"].intValue, score: score, status: json["status"].stringValue,
                   wonTime: json["won_time"].stringValue, signedDate: signed, quoteAnalysis: analysis,
-                  addTime: json["add_time"].stringValue)
+                  addTime: json["add_time"].stringValue, scoreIsManual: manual)
     }
 }
 
@@ -267,6 +287,8 @@ public struct ActivityItem: Hashable, Sendable, Identifiable {
 
     public var id: Int { activity.id }
     public var score: Double? { deal?.score }
+    /// Score verrouillé à la main (cadenas à la place de la bulle de couleur).
+    public var scoreIsManual: Bool { deal?.scoreIsManual ?? false }
     public var orgID: Int? { activity.orgID ?? deal?.orgID ?? person?.orgID }
 
     public init(activity: Activity, organizationName: String?, person: PersonContact?, deal: DealSummary?) {

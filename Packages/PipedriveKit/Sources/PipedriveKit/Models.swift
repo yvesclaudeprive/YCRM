@@ -6,32 +6,53 @@ public struct FieldDefinition: Hashable, Sendable, Identifiable {
     public let name: String
     public let type: String
     public let isCustom: Bool
+    /// Valeurs d'un champ à choix (« Source de la qualification » : Extraction, Manuel…).
+    public let options: [FieldOption]
 
     public var id: String { code }
 
-    public init(code: String, name: String, type: String, isCustom: Bool) {
+    public init(code: String, name: String, type: String, isCustom: Bool, options: [FieldOption] = []) {
         self.code = code
         self.name = name
         self.type = type
         self.isCustom = isCustom
+        self.options = options
     }
 
     /// Format API v2 (`/api/v2/dealFields`).
     init?(v2 json: JSONValue) {
         guard let code = json["field_code"].stringValue, let type = json["field_type"].stringValue else { return nil }
         self.init(code: code, name: json["field_name"].stringValue ?? code, type: type,
-                  isCustom: json["is_custom_field"].boolValue ?? Self.looksLikeCustomKey(code))
+                  isCustom: json["is_custom_field"].boolValue ?? Self.looksLikeCustomKey(code),
+                  options: (json["options"].arrayValue ?? []).compactMap(FieldOption.init(json:)))
     }
 
     /// Ancien format v1 (`/api/v1/dealFields`), en secours.
     init?(v1 json: JSONValue) {
         guard let code = json["key"].stringValue, let type = json["field_type"].stringValue else { return nil }
-        self.init(code: code, name: json["name"].stringValue ?? code, type: type, isCustom: Self.looksLikeCustomKey(code))
+        self.init(code: code, name: json["name"].stringValue ?? code, type: type, isCustom: Self.looksLikeCustomKey(code),
+                  options: (json["options"].arrayValue ?? []).compactMap(FieldOption.init(json:)))
     }
 
     /// Les champs personnalisés Pipedrive ont une clé de 40 caractères hexadécimaux.
     static func looksLikeCustomKey(_ code: String) -> Bool {
         code.count == 40 && code.allSatisfy { $0.isHexDigit }
+    }
+}
+
+/// Une valeur d'un champ à choix.
+public struct FieldOption: Hashable, Sendable {
+    public let id: Int
+    public let label: String
+
+    public init(id: Int, label: String) {
+        self.id = id
+        self.label = label
+    }
+
+    init?(json: JSONValue) {
+        guard let id = json["id"].intValue, let label = json["label"].stringValue else { return nil }
+        self.init(id: id, label: label)
     }
 }
 

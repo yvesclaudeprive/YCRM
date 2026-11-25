@@ -38,9 +38,12 @@ public struct ActivityFeedLoader: Sendable {
         let activities = all.filter { filter.contains(day: $0.localDay(timeZone: timeZone)) && seen.insert($0.id).inserted }
         let fields = (try? await fieldsRequest) ?? []
         let (scoreCode, signedCode, analysisCode) = Self.codes(in: fields)
+        let scoreFields = ScoreFields(fields: fields)
 
         async let dealsRequest = client.deals(ids: activities.compactMap(\.dealID), scoreCode: scoreCode,
-                                              signedCode: signedCode, analysisCode: analysisCode)
+                                              signedCode: signedCode, analysisCode: analysisCode,
+                                              sourceCode: scoreFields?.sourceCode,
+                                              manualOptionID: scoreFields?.manualOptionID)
         async let personsRequest = client.persons(ids: activities.compactMap(\.personID))
         let dealList = try await dealsRequest
         let personList = try await personsRequest
@@ -71,8 +74,15 @@ public struct ActivityFeedLoader: Sendable {
     public func deal(id: Int) async throws -> DealSummary? {
         let fields = (try? await client.dealFields()) ?? []
         let (scoreCode, signedCode, analysisCode) = Self.codes(in: fields)
+        let scoreFields = ScoreFields(fields: fields)
         return try await client.deals(ids: [id], scoreCode: scoreCode, signedCode: signedCode,
-                                      analysisCode: analysisCode).first
+                                      analysisCode: analysisCode, sourceCode: scoreFields?.sourceCode,
+                                      manualOptionID: scoreFields?.manualOptionID).first
+    }
+
+    /// Champs « Score priorisation » et « Source de la qualification » (« Modifier le score », « Score auto »).
+    public func scoreFields() async throws -> ScoreFields? {
+        ScoreFields(fields: try await client.dealFields())
     }
 }
 

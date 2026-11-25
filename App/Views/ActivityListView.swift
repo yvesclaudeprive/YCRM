@@ -60,6 +60,8 @@ struct ActivityListView: View {
     @State private var historySheet: HistoryRequest?
     @State private var quoteSheet: ActivityItem?
     @State private var claudeNote: ActivityItem?
+    /// Fenêtre « Modifier le score » (bloc glissé vers la droite).
+    @State private var scoreItem: ActivityItem?
     @State private var rescheduleRequest: RescheduleRequest?
     /// Fenêtre « Debrief call » ouverte ; une fois le compte rendu enregistré, « Décaler l'alerte » s'ouvre ensuite.
     @State private var debriefItem: ActivityItem?
@@ -197,6 +199,11 @@ struct ActivityListView: View {
                 Task { await sendNoteForClaude(text, for: item) }
             }
         }
+        .sheet(item: $scoreItem) { item in
+            ScoreSheet(item: item) { value in
+                await saveScore(value, for: item)
+            }
+        }
         .alert("Bouton indisponible", isPresented: explanationBinding, presenting: explanation) { _ in
             Button("OK", role: .cancel) {}
         } message: { reason in
@@ -256,6 +263,16 @@ struct ActivityListView: View {
                         }
                         Button("Analyse des devis", systemImage: "doc.text.magnifyingglass") {
                             handle(.showQuotes, for: item)
+                        }
+                        if item.deal != nil {
+                            Button("Modifier le score", systemImage: "slider.horizontal.3") {
+                                scoreItem = item
+                            }
+                            if item.scoreIsManual {
+                                Button("Score auto (Extraction)", systemImage: "lock.open") {
+                                    Task { await unlockScore(for: item) }
+                                }
+                            }
                         }
                     }
                     .onAppear { feed.loadMoreIfNeeded(after: item) }
@@ -778,7 +795,7 @@ struct ActivityListView: View {
     // MARK: Glisser le bloc : « Note pour Claude », « Analyse devis »
 
     private func swipeActions(for item: ActivityItem) -> [SwipeAction] {
-        [
+        var actions = [
             SwipeAction(title: "Analyse\ndevis", icon: "doc.text.magnifyingglass", color: .signingOrange) {
                 handle(.showQuotes, for: item)
             },
@@ -786,6 +803,74 @@ struct ActivityListView: View {
                 handle(.noteForClaude, for: item)
             },
         ]
+        // Score de l'affaire (demande d'Yves du 25/11/2026) : saisi à la main (verrouillé), et, s'il l'est déjà,
+        // retour en automatique en un clic.
+        if item.deal != nil {
+            actions.append(SwipeAction(title: "Modifier\nle score", icon: "slider.horizontal.3", color: .blue) {
+                scoreItem = item
+            })
+            if item.scoreIsManual {
+                actions.append(SwipeAction(title: "Score\nauto", icon: "lock.open.fill", color: .teal) {
+                    Task { await unlockScore(for: item) }
+                })
+            }
+        }
+        return actions
+    }
+
+    /// « Modifier le score » : nouveau score de l'affaire, verrouillé à la main (« Source de la qualification » =
+    /// Manuel), « Annuler » pendant 6 s. Renvoie un message d'erreur, ou nil si c'est fait.
+    private func saveScore(_ value: Double, for item: ActivityItem) async -> String? {
+        guard let deal = item.deal else { return "Aucune affaire liée à cette alerte : le score est un champ de l'affaire." }
+        do {
+            let fields = try await feed.scoreFields(session: session)
+            try await session.makeClient().updateDealFields(id: deal.id, fields.manualValues(score: value))
+            let locked = fields.sourceCode != nil && fields.manualOptionID != nil
+            feed.replaceDeal(deal.with(score: value, manual: locked || deal.scoreIsManual))
+            let text = FrenchFormat.number(value, maxDecimals: 1)
+            let message = locked
+                ? "🔒 Score \(text) verrouillé à la main (\(item.clientName))"
+                : "✅ Score \(text) enregistré (\(item.clientName)) ; « Source de la qualification » introuvable"
+            show(Toast(message: message) {
+                await restoreScore(deal, fields: fields)
+            })
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    /// « Annuler » : remet l'ancien score et l'ancienne source.
+    private func restoreScore(_ old: DealSummary, fields: ScoreFields) async {
+        do {
+            try await session.makeClient().updateDealFields(id: old.id,
+                                                           fields.restoreValues(score: old.score, manual: old.scoreIsManual))
+            feed.replaceDeal(old)
+            show(Toast(message: "Score remis à \(old.score.map { FrenchFormat.number($0, maxDecimals: 1) } ?? "vide")."))
+        } catch {
+            showError(error.localizedDescription)
+        }
+    }
+
+    /// « Score auto » : « Source de la qualification » repasse à « Extraction », le score redevient automatique.
+    private func unlockScore(for item: ActivityItem) async {
+        guard let deal = item.deal else { return }
+        busyItemIDs.insert(item.id)
+        defer { busyItemIDs.remove(item.id) }
+        do {
+            let fields = try await feed.scoreFields(session: session)
+            guard let values = fields.automaticValues else {
+                showError("Valeur « Extraction » introuvable dans le champ « Source de la qualification ».")
+                return
+            }
+            try await session.makeClient().updateDealFields(id: deal.id, values)
+            feed.replaceDeal(deal.with(score: deal.score, manual: false))
+            show(Toast(message: "🔓 Score repassé en automatique (\(item.clientName))") {
+                await restoreScore(deal, fields: fields)
+            })
+        } catch {
+            showError(error.localizedDescription)
+        }
     }
 
     /// Un seul bloc ouvert à la fois.

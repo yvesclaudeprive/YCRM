@@ -178,13 +178,21 @@ public struct PipedriveClient: Sendable {
     // MARK: Affaires, personnes, sociétés (par lots de 100)
 
     public func deals(ids: [Int], scoreCode: String?, signedCode: String? = nil,
-                      analysisCode: String? = nil) async throws -> [DealSummary] {
+                      analysisCode: String? = nil, sourceCode: String? = nil,
+                      manualOptionID: Int? = nil) async throws -> [DealSummary] {
         var extra: [URLQueryItem] = []
-        let codes = [scoreCode, signedCode, analysisCode].compactMap { $0 }
+        let codes = [scoreCode, signedCode, analysisCode, sourceCode].compactMap { $0 }
         if !codes.isEmpty { extra.append(URLQueryItem(name: "custom_fields", value: codes.joined(separator: ","))) }
         return try await batch("/api/v2/deals", ids: ids, extra: extra).compactMap {
-            DealSummary(json: $0, scoreCode: scoreCode, signedCode: signedCode, analysisCode: analysisCode)
+            DealSummary(json: $0, scoreCode: scoreCode, signedCode: signedCode, analysisCode: analysisCode,
+                        sourceCode: sourceCode, manualOptionID: manualOptionID)
         }
+    }
+
+    /// Met à jour des champs personnalisés d'une affaire (« Modifier le score », « Score auto » : sur un clic d'Yves).
+    public func updateDealFields(id: Int, _ values: [String: JSONValue]) async throws {
+        let data = try JSONEncoder().encode(JSONValue.object(["custom_fields": .object(values)]))
+        _ = try await send("PATCH", "/api/v2/deals/\(id)", body: data)
     }
 
     /// Note sur une affaire (ou, sans affaire, sur la personne) : « Note pour Claude » écrite depuis l'app.

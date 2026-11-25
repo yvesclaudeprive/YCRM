@@ -58,6 +58,8 @@ public struct WidgetAlert: Codable, Hashable, Sendable, Identifiable {
     public let text: String
     /// « Score priorisation » de l'affaire.
     public let score: Double?
+    /// Score verrouillé à la main (cadenas) ; absent des alertes gardées par les premiers widgets.
+    public let manualScore: Bool?
     /// Échéance telle que Pipedrive la donne (UTC).
     public let dueDate: String?
     public let dueTime: String?
@@ -66,12 +68,13 @@ public struct WidgetAlert: Codable, Hashable, Sendable, Identifiable {
     public let orgID: Int?
 
     public init(id: Int, company: String, person: String?, text: String, score: Double?, dueDate: String?,
-                dueTime: String?, dealID: Int?, personID: Int?, orgID: Int?) {
+                dueTime: String?, dealID: Int?, personID: Int?, orgID: Int?, manualScore: Bool = false) {
         self.id = id
         self.company = company
         self.person = person
         self.text = text
         self.score = score
+        self.manualScore = manualScore
         self.dueDate = dueDate
         self.dueTime = dueTime
         self.dealID = dealID
@@ -83,8 +86,12 @@ public struct WidgetAlert: Codable, Hashable, Sendable, Identifiable {
         self.init(id: item.id, company: item.clientName, person: item.person?.name,
                   text: item.activity.subject.trimmingCharacters(in: .whitespacesAndNewlines),
                   score: item.score, dueDate: item.activity.dueDate, dueTime: item.activity.dueTime,
-                  dealID: item.activity.dealID, personID: item.person?.id ?? item.activity.personID, orgID: item.orgID)
+                  dealID: item.activity.dealID, personID: item.person?.id ?? item.activity.personID, orgID: item.orgID,
+                  manualScore: item.scoreIsManual)
     }
+
+    /// Score verrouillé à la main : cadenas à la place de la bulle de couleur, comme dans l'app.
+    public var isManualScore: Bool { manualScore ?? false }
 
     /// Lien vers l'app, qui ouvre la liste sur la carte de l'alerte.
     public var link: URL { YCRMLink.alert(id: id) }

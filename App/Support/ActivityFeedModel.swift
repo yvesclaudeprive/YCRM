@@ -324,6 +324,26 @@ final class ActivityFeedModel {
         items = ActivityItem.feedOrder(updated, today: today, timeZone: parisTimeZone)
     }
 
+    /// Champs « Score priorisation » et « Source de la qualification » (lus une fois, pour « Modifier le score »).
+    private var scoreFieldsCache: ScoreFields?
+
+    func scoreFields(session: AppSession) async throws -> ScoreFields {
+        if let scoreFieldsCache { return scoreFieldsCache }
+        guard let fields = try await ActivityFeedLoader(client: session.makeClient()).scoreFields() else {
+            throw PipedriveError.validation("Champ « Score priorisation » introuvable dans Pipedrive")
+        }
+        scoreFieldsCache = fields
+        return fields
+    }
+
+    /// Score modifié (« Modifier le score », « Score auto », « Annuler ») : toutes les cartes de l'affaire prennent le
+    /// nouveau score et la liste est retriée tout de suite.
+    func replaceDeal(_ deal: DealSummary) {
+        let today = FrenchFormat.apiDay(from: Date(), timeZone: parisTimeZone)
+        let updated = items.map { $0.deal?.id == deal.id ? $0.withDeal(deal) : $0 }
+        items = ActivityItem.feedOrder(updated, today: today, timeZone: parisTimeZone)
+    }
+
     /// Relit l'affaire dans Pipedrive (après une « Note pour Claude ») ; si l'analyse de Claude a changé, met à jour les
     /// cartes de l'affaire et recalcule leurs étiquettes. Renvoie true si l'analyse a changé.
     @discardableResult

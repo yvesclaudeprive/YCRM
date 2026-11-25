@@ -21,7 +21,8 @@ struct SwipeReveal<Content: View>: View {
     @ViewBuilder let content: Content
 
     @State private var drag: CGFloat = 0
-    private let buttonWidth: CGFloat = 78
+    /// Plus étroit à partir de 4 boutons (« Modifier le score », « Score auto ») : la carte reste visible.
+    private var buttonWidth: CGFloat { actions.count > 3 ? 70 : 78 }
     private let pillSize: CGFloat = 52
 
     private var revealWidth: CGFloat { CGFloat(actions.count) * buttonWidth }
